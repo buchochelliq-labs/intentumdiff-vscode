@@ -208,7 +208,45 @@ interface IncrementalReviewRequest {
   status: ReviewRefreshFile["status"];
 }
 
+/** The pre-rebrand extension id. Kept as a literal: it is history, not configuration. */
+const RETIRED_EXTENSION_ID = "buchochelliq-labs.intentdiff";
+
+/**
+ * Warn when the pre-rebrand extension is still installed alongside this one.
+ *
+ * VS Code treats a renamed id as a DIFFERENT extension, so installing this version does not
+ * replace `intentdiff` — both stay enabled, both register the same commands, providers and
+ * status-bar items, and whichever activates first wins. The symptom is not "two extensions
+ * installed"; it is commands that do nothing, or results from a version the user thought they
+ * had replaced. That is unattributable from the outside, so say it plainly.
+ *
+ * The changelog documents this, but a changelog only reaches people who read one.
+ */
+function warnAboutRetiredExtension(): void {
+  if (!vscode.extensions.getExtension(RETIRED_EXTENSION_ID)) {
+    return;
+  }
+  const uninstall = "Show me how";
+  void vscode.window
+    .showWarningMessage(
+      "The older 'IntentDiff' extension is still installed. It registers the same commands as " +
+        "IntentumDiff, so results may come from whichever loads first. Uninstall it to avoid " +
+        "confusing behaviour.",
+      uninstall,
+    )
+    .then((choice) => {
+      if (choice !== uninstall) {
+        return;
+      }
+      void vscode.commands.executeCommand(
+        "workbench.extensions.search",
+        `@installed ${RETIRED_EXTENSION_ID}`,
+      );
+    });
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  warnAboutRetiredExtension();
   const controller = new PysdController(context);
   context.subscriptions.push(controller);
   controller.activate();
