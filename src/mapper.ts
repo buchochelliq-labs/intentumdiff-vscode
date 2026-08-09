@@ -42,17 +42,19 @@ export function diffToDiagnostics(diff: SemanticDiff): DiagnosticLike[] {
       code: isFuel ? "fuel_exceeded" : "parse_error",
     });
   }
-  // Only report the fallback when nothing above has already said so. The engine sets
+  // Suppress this only when a parse_error already said the same thing. The engine sets
   // `is_fallback` AND pushes a `parse_errors` entry for the same event, so emitting both put
   // two warnings on line 1 of every fallback file — "tree-sitter reported parse errors;
   // token-level fallback used" immediately followed by "Parser fallback used; semantic
-  // precision may be reduced", which is the same sentence twice with less detail the second
-  // time. The parse-error entry is the more useful of the two because it says WHY, so it wins
-  // and this one fills in only when the fallback happened for some other reason.
-  const alreadyReported = diagnostics.some(
-    (d) => d.code === "parse_error" || d.code === "fuel_exceeded",
-  );
-  if (diff.is_fallback === true && !alreadyReported) {
+  // precision may be reduced". That is one sentence twice, with less detail the second time,
+  // and the parse-error entry wins because it says WHY.
+  //
+  // Deliberately NOT suppressed by fuel_exceeded. Fuel says why the engine stopped; it says
+  // nothing about what was produced instead, so dropping the fallback warning there would
+  // lose "semantic precision may be reduced" entirely. The two are distinct facts, which is
+  // exactly what `diffToDiagnostics distinguishes fuel failures and parser fallback` asserts.
+  const fallbackAlreadyExplained = diagnostics.some((d) => d.code === "parse_error");
+  if (diff.is_fallback === true && !fallbackAlreadyExplained) {
     diagnostics.push({
       severity: "warning",
       message: "Parser fallback used; semantic precision may be reduced.",
