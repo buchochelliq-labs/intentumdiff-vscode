@@ -5,6 +5,24 @@
 A beta, because 0.0.1 was published without anyone installing it into a clean editor and using
 it. That release was pulled from the Marketplace and Open VSX within a day.
 
+### Upgrading from 0.0.1 — action required
+
+**The extension ID changed**, from `buchochelliq-labs.intentdiff` to
+`buchochelliq-labs.intentumdiff`. VS Code treats those as two different extensions, so
+installing this version does **not** replace the old one — you end up with both installed at
+once, each registering its own commands, status-bar items and providers. The symptom is
+confusing rather than obvious: whichever loads first wins, and the other appears broken.
+
+Uninstall the old one:
+
+```bash
+code --uninstall-extension buchochelliq-labs.intentdiff
+```
+
+Or find "IntentDiff" (no *um*) in the Extensions view and remove it. Only people who installed
+0.0.1 during the short window it was published are affected — it has since been removed from
+both marketplaces, so it cannot be installed fresh.
+
 ### Fixed
 
 - **Image assets never showed a perceptual diff.** The review panel always reported
