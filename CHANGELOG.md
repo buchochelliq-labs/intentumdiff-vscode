@@ -2,8 +2,12 @@
 
 ## 0.0.2-beta.1 — 2026-08-09
 
-A beta, because 0.0.1 was published without anyone installing it into a clean editor and using
-it. That release was pulled from the Marketplace and Open VSX within a day.
+A beta. 0.0.1 was pulled from the Marketplace and Open VSX the same day it went up: it had
+faults that only appear once the extension is packaged and installed, not while running from
+a source checkout, so they survived local testing and showed up immediately on a real install.
+
+0.0.2 fixes those and adds a release gate that tests the packaged artifact rather than the
+source tree. It stays a beta until it has been used in anger.
 
 ### Upgrading from 0.0.1 — action required
 
