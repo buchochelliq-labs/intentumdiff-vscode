@@ -1,13 +1,15 @@
 # Building intentumdiff-vscode
 
-Toolchain: **Node 20**.
+Toolchain: **Node 20** (see `.nvmrc`). This is not a preference: it is the Node the
+VS Code 1.90 extension host provides, and `engines.vscode: ^1.90.0` promises to
+support that host. CI pins the same version explicitly in the workflows.
 
 ## Extension
 
 ```bash
 npm ci
 npm run lint      # tsc -p ./ --noEmit
-npm run test      # compiles then runs the node:test suite (244 tests)
+npm run test      # compiles then runs the node:test suite (260 tests)
 ```
 
 ## Review shell
