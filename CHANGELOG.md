@@ -23,6 +23,9 @@ Uninstall the old one:
 code --uninstall-extension buchochelliq-labs.intentdiff
 ```
 
+The extension now detects the old one and says so on startup, rather than leaving you to work
+out why two copies are fighting.
+
 Or find "IntentDiff" (no *um*) in the Extensions view and remove it. Only people who installed
 0.0.1 during the short window it was published are affected — it has since been removed from
 both marketplaces, so it cannot be installed fresh.
@@ -37,6 +40,11 @@ both marketplaces, so it cannot be installed fresh.
   appeared while a review was simply still running, and a second narrated a fallback that had
   already succeeded. Both are now transient status-bar messages.
 - **The image summary starved its own heading**, wrapping the description one word per line.
+- **Every chrome icon was blank once installed.** The packaged extension excluded the codicon
+  font it links at runtime, so the stylesheet 404'd in any Marketplace install. It looked
+  correct in every source checkout, because there the font sits exactly where the code expects
+  — which is why it survived the whole test suite. The packaging step now checks that every
+  asset the interface loads is actually in the artefact.
 
 ### Changed
 
