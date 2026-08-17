@@ -943,7 +943,7 @@
     "dev:watch": "npm run watch"
   },
   "devDependencies": {
-    "@highlightjs/cdn-assets": "^11.11.1",
+    "@highlightjs/cdn-assets": "^11.12.0",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^26.1.2",
     "@types/vscode": "^1.125.0",
