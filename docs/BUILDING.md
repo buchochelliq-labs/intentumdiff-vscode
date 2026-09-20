@@ -91,3 +91,7 @@ view. This guards #55: manual refresh must retain its explicit hidden-view permi
 through both timer scheduling and draining behind in-flight work. Automatic background
 refreshes still require a visible review view. Failed runs retain the last review state,
 a failure screenshot when available, and VS Code logs alongside the original test error.
+
+### Source fallback visual checks
+
+The real-runtime acceptance captures incomplete Python and JavaScript source using the installed VSIX and external Rust-backed CLI. For issues #56/#57, verify that every hunk action fits or wraps with Explorer and Chat open, and the panel prominently identifies source fallback with unknown semantic equivalence. Source-fallback presentation uses the Rust `semantic_contract` metadata; Python and the extension do not reclassify the comparison. Valid-source recovery must restore normal semantic labels. Static captures do not certify every theme or action.

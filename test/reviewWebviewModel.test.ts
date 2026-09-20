@@ -819,9 +819,9 @@ test("rendered webviews escape labels and source text and include a nonce CSP", 
   assert.match(panelHtml, /\.diff-app\[data-review-view="intent"\] \[data-review-page="intent"\]/u);
   assert.doesNotMatch(panelHtml, /data-review-page="binary-image"/u);
   assert.doesNotMatch(panelHtml, /data-review-page="binary-image"\] \{ display:grid !important; \}/u);
-  assert.match(panelHtml, /\.diff-surface \{ --diff-grid:22px 34px minmax\(90px,1fr\) 24px 34px minmax\(90px,1fr\); \}/u);
+  assert.match(panelHtml, /\.diff-surface \{ --diff-grid:22px 34px minmax\(0,1fr\) 24px 34px minmax\(0,1fr\); \}/u);
   assert.match(panelHtml, /\.diff-column-heads,\.diff-hunk,\.diff-row \{ min-width:0; \}/u);
-  assert.match(panelHtml, /\.hunk-actions \{ grid-column:1 \/ 7; display:flex; justify-content:flex-end/u);
+  assert.match(panelHtml, /\.hunk-actions \{ grid-column:1 \/ 7; min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end/u);
   assert.doesNotMatch(panelHtml, /data-layout-toggle="rail"/u);
   assert.doesNotMatch(panelHtml, /data-layout-hover="rail"/u);
   assert.doesNotMatch(panelHtml, /data-layout-toggle="rail-pin"/u);
@@ -1544,4 +1544,28 @@ test("toolbar renders a three-column layout with legend chips derived from decor
   assert.doesNotMatch(panelHtml, /class="legend-chip"/u);
   assert.doesNotMatch(panelHtml, /data-panel-action="applyEdits"/u);
   assert.doesNotMatch(panelHtml, /data-panel-action="discardEdits"/u);
+});
+
+test("source fallback presents unknown equivalence without semantic hunk claims and recovers", () => {
+  const file: ReviewFile = structuredClone(sampleFile);
+  file.diff!.is_fallback = true;
+  file.diff!.metadata = { semantic_contract: "rust_source_fallback_v1" };
+  file.diff!.change_groups = [{ kind: "MEANINGFUL_CHANGE", raw_change_indices: [0] }];
+  file.diff!.changes![0].change_type = "MODIFICATION";
+  const render = () => new JSDOM(renderPanelHtml(buildReviewPanelModel(file, "def f(", "def g(", "HEAD"), { nonce: "n", cspSource: "vscode-resource:" })).window.document;
+  const doc = render();
+  assert.equal(doc.querySelector(".file-mode-badge")?.textContent, "Source fallback");
+  assert.match(doc.querySelector(".fallback-notice")?.textContent ?? "", /Semantic equivalence unknown/);
+  assert.equal(doc.querySelector(".diff-app")?.children.length, 3);
+  assert.ok(doc.querySelector(".product-shell > .fallback-notice"));
+  assert.equal(doc.querySelector(".hunk-title strong")?.textContent, "Source hunk");
+  assert.equal(doc.querySelector(".hunk-glyph")?.textContent, "source");
+  assert.match(doc.querySelector(".diff-toolbar-tag")?.textContent ?? "", /source change/);
+  assert.equal(doc.querySelector('.top-badges [data-filter="semantic"]'), null);
+  file.diff!.is_fallback = false;
+  file.diff!.metadata = {};
+  const recovered = render();
+  assert.equal(recovered.querySelector(".fallback-notice"), null);
+  assert.equal(recovered.querySelector(".file-mode-badge")?.textContent, "Semantic diff");
+  assert.equal(recovered.querySelector(".hunk-title strong")?.textContent, "Semantic hunk");
 });

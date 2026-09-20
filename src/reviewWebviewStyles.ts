@@ -197,7 +197,7 @@ export function styles(): string {
     .chip-meaningful { border-color:rgba(247,193,77,.45); color:var(--amber); }
     .chip-schema-status { border-color:rgba(79,214,255,.45); color:var(--cyan-fg); }
     .chip-ignored-style { border-color:rgba(126,231,135,.45); color:var(--green); }
-    .diff-surface { --diff-grid:24px 46px minmax(260px,1fr) 36px 46px minmax(260px,1fr); border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg); box-shadow:0 12px 28px rgba(0,0,0,.18); min-height:420px; }
+    .diff-surface { --diff-grid:24px 46px minmax(0,1fr) 36px 46px minmax(0,1fr); border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg); box-shadow:0 12px 28px rgba(0,0,0,.18); min-height:420px; }
     .diff-toolbar { display:flex; justify-content:space-between; gap:10px; padding:9px 12px; color:var(--muted); background:var(--panel); border-bottom:1px solid var(--line); }
     .diff-toolbar strong { color:var(--bright-fg); }
     .diff-stats { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
@@ -207,7 +207,7 @@ export function styles(): string {
     .stat-delete { border-color:rgba(255,107,107,.44); color:var(--red); }
     .stat-change { border-color:rgba(247,193,77,.44); color:var(--amber); }
     .stat-semantic { border-color:rgba(79,214,255,.44); color:var(--cyan); }
-    .diff-column-heads { display:grid; grid-template-columns:var(--diff-grid); min-width:900px; border-bottom:1px solid var(--line); background:var(--diff-heads-bg); color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+    .diff-column-heads { display:grid; grid-template-columns:var(--diff-grid); min-width:0; border-bottom:1px solid var(--line); background:var(--diff-heads-bg); color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
     .diff-column-heads span { padding:7px 10px; border-left:1px solid var(--soft-line); }
     .base-head { grid-column:2 / 4; }
     .connector-head { grid-column:4; border-left:0; background:var(--diff-gutter-bg); }
@@ -238,7 +238,8 @@ export function styles(): string {
     .overview-hit.is-selected .overview-mark { width:9px; }
     .overview-hit:hover .overview-mark,.overview-hit.is-selected .overview-mark { filter:brightness(1.18); outline:1px solid var(--vscode-focusBorder,rgba(255,255,255,.7)); }
     .diff-table { font-family:var(--vscode-editor-font-family, Consolas, monospace); font-size:12px; overflow:auto; max-height:72vh; min-height:360px; padding-right:22px; background:var(--diff-editor-bg); }
-    .diff-hunk { display:grid; grid-template-columns:var(--diff-grid); align-items:center; min-width:900px; border-top:1px solid rgba(79,214,255,.28); border-bottom:1px solid rgba(79,214,255,.18); background:linear-gradient(90deg,rgba(79,214,255,.12),rgba(181,140,255,.09)); color:var(--bright-fg); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+    .diff-hunk { display:grid; grid-template-columns:var(--diff-grid); align-items:center; min-width:0; border-top:1px solid rgba(79,214,255,.28); border-bottom:1px solid rgba(79,214,255,.18); background:linear-gradient(90deg,rgba(79,214,255,.12),rgba(181,140,255,.09)); color:var(--bright-fg); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+    .fallback-notice { grid-column:1 / -1; margin:0; padding:10px 12px; border:1px solid var(--vscode-editorWarning-foreground); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
     .diff-hunk strong { color:var(--bright-fg); }
     .hunk-title { grid-column:3; min-width:0; display:flex; align-items:center; gap:8px; padding:7px 10px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
     .hunk-title small { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--muted); text-transform:none; letter-spacing:0; }
@@ -250,14 +251,14 @@ export function styles(): string {
     .hunk-glyph { grid-column:1 / 3; justify-self:center; border:1px solid rgba(79,214,255,.42); border-radius:999px; padding:1px 7px; color:var(--cyan); background:rgba(79,214,255,.1); }
     .hunk-connector { grid-column:4; justify-self:stretch; align-self:stretch; position:relative; border-inline:1px solid rgba(79,214,255,.16); background:rgba(79,214,255,.04); }
     .hunk-connector::before { content:""; position:absolute; left:50%; top:50%; width:22px; height:1px; transform:translate(-50%,-50%); background:rgba(79,214,255,.58); box-shadow:0 0 12px rgba(79,214,255,.32); }
-    .hunk-actions { grid-column:1 / 7; display:flex; justify-content:flex-end; gap:5px; padding:0 8px 7px; }
+    .hunk-actions { grid-column:1 / 7; min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:5px; padding:0 8px 7px; }
     .hunk-actions .action { min-height:26px; padding:3px 7px; font-size:11px; border-radius:6px; }
     .hunk-inline-editor { grid-column:1 / 7; margin:0 8px 8px; border:1px solid var(--line); border-radius:6px; background:rgba(2,6,23,.22); text-transform:none; letter-spacing:0; }
     .hunk-inline-editor summary { cursor:pointer; padding:6px 8px; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
     .hunk-inline-editor label { display:grid; gap:5px; padding:0 8px 8px; color:var(--muted); font-size:11px; }
     .hunk-inline-editor textarea { min-height:72px; resize:vertical; border:1px solid var(--line); border-radius:5px; padding:7px; color:var(--text); background:rgba(2,6,23,.62); font:12px/1.45 var(--mono); tab-size:2; }
     .hunk-inline-editor .action { justify-self:end; margin:0 8px 8px; min-height:24px; padding:3px 8px; font-size:11px; }
-    .diff-row { display:grid; grid-template-columns:var(--diff-grid); min-width:900px; border-bottom:1px solid var(--soft-line); }
+    .diff-row { display:grid; grid-template-columns:var(--diff-grid); min-width:0; border-bottom:1px solid var(--soft-line); }
     .diff-row code { white-space:pre; overflow:hidden; text-overflow:ellipsis; padding:3px 9px; min-height:22px; }
     /* highlight.js token colours (Dark+ approximation; VS Code exposes no per-scope vars). The .hljs class carries no background so the diff cell tint shows through. */
     .diff-table .hljs-comment,.diff-table .hljs-quote { color:var(--vscode-descriptionForeground); font-style:italic; }
@@ -827,7 +828,7 @@ export function styles(): string {
       .diff-topbar .action.has-icon { width:30px; min-width:30px; padding-inline:0; justify-content:center; }
       .product-tab span { display:none; }
       .product-tab { width:30px; padding-inline:0; justify-content:center; }
-      .diff-surface { --diff-grid:22px 34px minmax(90px,1fr) 24px 34px minmax(90px,1fr); }
+      .diff-surface { --diff-grid:22px 34px minmax(0,1fr) 24px 34px minmax(0,1fr); }
       .diff-column-heads,.diff-hunk,.diff-row { min-width:0; }
       .diff-column-heads span { padding-inline:7px; }
       .diff-row code { padding-inline:6px; }
