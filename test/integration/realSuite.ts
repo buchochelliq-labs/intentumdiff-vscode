@@ -148,5 +148,6 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("intentumdiff.openReviewPanel", sourcePayload);
   await capture("recovered-review");
   await recorded;
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", path.join(evidence, "workflow.mp4"), "-vf", "fps=8,scale=960:-1", path.join(evidence, "workflow.gif")], { timeout: 60000 });
   fs.writeFileSync(path.join(evidence, "results.json"), JSON.stringify(results, null, 2));
 }

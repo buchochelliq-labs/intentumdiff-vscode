@@ -13,6 +13,9 @@ test("candidate media rejects stale identity and changed evidence bytes", () => 
     const manifest = createCandidateManifest(root, identity);
     validateCandidateManifest(root, manifest, identity);
     assert.throws(() => validateCandidateManifest(root, manifest, { ...identity, extension_commit: "c".repeat(40) }), /identity/);
+    const staleEntry = structuredClone(manifest);
+    staleEntry.captures[0].commit = "c".repeat(40);
+    assert.throws(() => validateCandidateManifest(root, staleEntry, identity), /identity/);
     fs.writeFileSync(path.join(root, "capture.png"), "changed");
     assert.throws(() => validateCandidateManifest(root, manifest, identity), /checksum/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

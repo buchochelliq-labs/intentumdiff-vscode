@@ -1,4 +1,4 @@
-name: release-media-manifest-gate
+name: Historical release media inventory
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
       - 'scripts/record-release-demo.ps1'
       - 'scripts/validate-release-media-manifest.ps1'
       - 'scripts/validate_release_media_manifest.py'
+      - 'test/test_release_media_identity.py'
       - '.github/workflows/release-media-manifest-gate.yml'
       - 'release-media/**'
   push:
@@ -15,6 +16,7 @@ on:
       - 'scripts/record-release-demo.ps1'
       - 'scripts/validate-release-media-manifest.ps1'
       - 'scripts/validate_release_media_manifest.py'
+      - 'test/test_release_media_identity.py'
       - '.github/workflows/release-media-manifest-gate.yml'
       - 'release-media/**'
   workflow_dispatch:
@@ -24,7 +26,7 @@ permissions:
 
 jobs:
   validate-release-media-manifest:
-    name: Validate release media manifest
+    name: Inventory historical captures (not release approval)
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -32,7 +34,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate release media manifest
+      - name: Test provenance rejection
         shell: pwsh
-        run: |
-          python scripts/validate_release_media_manifest.py
+        run: python -m unittest discover -s test -p test_release_media_identity.py
+
+      - name: Inventory historical captures (not release approval)
+        shell: pwsh
+        run: python scripts/validate_release_media_manifest.py --historical-inventory

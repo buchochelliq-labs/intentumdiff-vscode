@@ -23,16 +23,15 @@ npm run test      # builds (tsc) then runs its suite
 (Its tsconfig pins `typeRoots` locally so the extension's `@types` don't leak into the nested
 package.)
 
-## Release media gate
+## Historical media inventory
 
 `release-media/manifest.json` declares the visual proof surfaces; validate with:
 
 ```bash
-python scripts/validate_release_media_manifest.py
+python scripts/validate_release_media_manifest.py --historical-inventory
 ```
 
-The recorder (`scripts/record-release-demo.ps1`) regenerates screenshots; the CI gate
-(`release-media-manifest-gate.yml`) enforces manifest validity on every change.
+The historical inventory workflow (`release-media-manifest-gate.yml`) checks the old files and runs provenance-validator regressions. Its success is not approval to publish those captures. The current real-runtime acceptance workflow records the exact installed candidate.
 
 ## VSIX packaging
 
@@ -103,3 +102,5 @@ The real-runtime workflow now exercises a tracked PNG through the Rust image eng
 `artifacts/real-runtime/capture-manifest.json` binds each PNG/MP4 checksum to the installed VSIX version, SHA256 and tested checkout commit in `provenance.json`. PR builds record the synthetic merge commit. The harness removes old capture files first and validates identity/checksums; captures remain awaiting independent visual review until a reviewer checks the actual bytes. A successful capture is not itself visual approval.
 
 The older `release-media/manifest.json` captures lack recoverable build provenance. Its dimension check is a historical inventory check, not certification of the current candidate. Do not relabel those files with today's identity or advertise the current unpublished candidate as a released build. Use immutable commit URLs for reviewed repository media, and repeat acceptance after an authorized publication.
+
+Current legacy-format capture approval requires `python scripts/validate_release_media_manifest.py <manifest> --expected-version <candidate-version> --expected-commit <tested-build-commit>`. Missing identity, mismatched version, or mismatched commit fails. Omitting the candidate commit also fails. The historical inventory workflow runs the identity regression tests but does not certify those old images for publication. Current real-runtime captures use their own installed-VSIX identity and per-file checksum manifest.

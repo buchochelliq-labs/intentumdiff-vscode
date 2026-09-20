@@ -473,7 +473,7 @@ export function styles(): string {
     .asset-mode-switch { display:flex; align-items:center; gap:4px; padding:8px; border-bottom:1px solid var(--vscode-panel-border,rgba(255,255,255,.08)); }
     .asset-mode-btn { appearance:none; cursor:pointer; font:inherit; font-size:12px; padding:4px 10px; border-radius:6px; border:1px solid transparent; background:transparent; color:var(--vscode-foreground); }
     .asset-mode-btn:hover:not([disabled]) { background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.08)); }
-    .asset-mode-btn.is-active { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background); }
+    .asset-mode-btn.is-active { background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-focusBorder,var(--vscode-button-background)); }
     .asset-mode-btn[disabled] { opacity:.4; cursor:not-allowed; }
     .asset-mode-controls { display:flex; align-items:center; gap:10px; margin-left:auto; flex-wrap:wrap; }
     .asset-opacity { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--vscode-descriptionForeground); }
@@ -626,7 +626,7 @@ export function styles(): string {
     .asset-hotspot-nav { display:flex; gap:4px; }
     .asset-hotspot-step { appearance:none; cursor:pointer; width:22px; height:22px; border-radius:6px; border:1px solid var(--vscode-panel-border,rgba(255,255,255,.14)); background:transparent; color:var(--vscode-foreground); font-size:14px; line-height:1; }
     .asset-hotspot-step:hover { background:var(--vscode-toolbar-hoverBackground,rgba(255,255,255,.08)); }
-    .asset-hotspot { padding:10px; border-radius:8px; border:1px solid rgba(79,214,255,.18); background:rgba(8,20,36,.7); cursor:pointer; transition:border-color .12s ease, background .12s ease; }
+    .asset-hotspot { padding:10px; border-radius:8px; border:1px solid rgba(79,214,255,.18); background:var(--vscode-editor-background); color:var(--vscode-foreground); cursor:pointer; transition:border-color .12s ease, background .12s ease; }
     .asset-hotspot:hover { border-color:rgba(124,106,247,.5); }
     .asset-hotspot strong { display:flex; align-items:center; gap:7px; color:var(--bright-fg-strong); }
     .asset-hotspot-badge { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:var(--intent,var(--purple-strong)); color:var(--bright-fg-strong); font-size:11px; font-weight:700; flex:none; }
@@ -803,7 +803,7 @@ export function styles(): string {
       .diff-topbar { grid-template-columns:minmax(0,1fr); align-items:start; }
       .diff-topbar .hero-actions { justify-content:flex-start; flex-wrap:nowrap; width:100%; }
       .asset-diff-summary,.asset-detail-grid { grid-template-columns:minmax(0,1fr); }
-      .asset-metric-strip { min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .asset-metric-strip { min-width:0; grid-auto-flow:row; grid-auto-columns:auto; grid-template-columns:repeat(2,minmax(0,1fr)); }
       .asset-review-grid { grid-template-columns:minmax(0,1fr); }
       .asset-artifact-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
       .asset-comparison-grid { grid-template-columns:minmax(0,1fr); }
@@ -817,16 +817,17 @@ export function styles(): string {
       .insight-layout { grid-template-columns:1fr; }
     }
     @media (max-width: 700px) {
+      .top-badges { flex-wrap:wrap; overflow-x:visible; }
       .dashboard-title p { white-space:normal; }
       .dashboard-board-heading { align-items:flex-start; }
       .dashboard-file-row header { grid-template-columns:minmax(0,1fr); align-items:start; }
       .dashboard-file-actions { justify-content:flex-start; flex-wrap:nowrap; max-width:100%; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
       .dashboard-detail-actions { flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
-      .dashboard-actions .action span,
-      .diff-topbar .action:not(.toolbar-icon) span { display:none; }
+      .dashboard-actions .action > span:not(.control-icon),
+      .diff-topbar .action:not(.toolbar-icon) > span:not(.control-icon) { display:none; }
       .dashboard-actions .action.has-icon,
       .diff-topbar .action.has-icon { width:30px; min-width:30px; padding-inline:0; justify-content:center; }
-      .product-tab span { display:none; }
+      .product-tab > span:not(.control-icon) { display:none; }
       .product-tab { width:30px; padding-inline:0; justify-content:center; }
       .diff-surface { --diff-grid:22px 34px minmax(0,1fr) 24px 34px minmax(0,1fr); }
       .diff-column-heads,.diff-hunk,.diff-row { min-width:0; }
