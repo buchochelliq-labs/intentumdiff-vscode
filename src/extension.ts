@@ -342,6 +342,7 @@ class PysdController implements vscode.Disposable {
   ]);
   private reviewRefreshQueued = false;
   private pendingReviewForceFull = false;
+  private pendingReviewAllowHidden = false;
   private pendingReviewReason = "refresh";
   private reviewGeneration = 0;
   private readonly reviewPolling: ReviewPollingService;
@@ -1181,6 +1182,7 @@ class PysdController implements vscode.Disposable {
     }
     this.pendingReviewReason = reason;
     this.pendingReviewForceFull = this.pendingReviewForceFull || options.forceFull === true;
+    this.pendingReviewAllowHidden = this.pendingReviewAllowHidden || options.allowHidden === true;
     if (this.isReviewRefreshBusy()) {
       this.reviewRefreshQueued = true;
       return;
@@ -1229,11 +1231,14 @@ class PysdController implements vscode.Disposable {
     }
     this.reviewRefreshQueued = false;
     this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
     this.pendingReviewReason = "refresh";
   }
 
   private async refreshReviewIfNeeded(): Promise<void> {
-    if (this.reviewRefreshRunning || !this.reviewViewVisible || !this.isEnabled()) {
+    // Explicit hidden-view permission (manual/webview refresh) must survive
+    // the timer boundary even when the review view is hidden.
+    if (this.reviewRefreshRunning || (!this.reviewViewVisible && !this.pendingReviewAllowHidden) || !this.isEnabled()) {
       return;
     }
     if (this.hasInFlightReviewWork()) {
@@ -1260,6 +1265,7 @@ class PysdController implements vscode.Disposable {
     const forceFull = this.pendingReviewForceFull;
     const reason = this.pendingReviewReason;
     this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
     this.reviewRefreshQueued = false;
     try {
       if (forceFull) {
@@ -2615,9 +2621,11 @@ class PysdController implements vscode.Disposable {
     }
     const reason = this.pendingReviewReason;
     const forceFull = this.pendingReviewForceFull;
+    const allowHidden = this.pendingReviewAllowHidden;
     this.reviewRefreshQueued = false;
     this.pendingReviewForceFull = false;
-    this.scheduleReviewRefresh(reason, { forceFull });
+    this.pendingReviewAllowHidden = false;
+    this.scheduleReviewRefresh(reason, { forceFull, allowHidden });
   }
 
   private applyCachedDecorations(editor: vscode.TextEditor): void {

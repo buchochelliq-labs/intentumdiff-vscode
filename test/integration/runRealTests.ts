@@ -43,6 +43,7 @@ async function main(): Promise<void> {
     core_commit: process.env.INTENTUMDIFF_TEST_CORE_COMMIT ?? null,
     mode: "installed VSIX bytes loaded by VS Code test host; external real CLI",
   }, null, 2));
+  try {
   await runTests({ vscodeExecutablePath: executable, extensionDevelopmentPath: installed,
     extensionTestsPath: path.join(__dirname, "realSuite.js"),
     launchArgs: [workspace, "--user-data-dir", user, "--extensions-dir", extensions,
@@ -52,5 +53,11 @@ async function main(): Promise<void> {
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1", INTENTUMDIFF_REAL_WORKSPACE: workspace,
       INTENTUMDIFF_REAL_INSTALLED: installed, INTENTUMDIFF_REAL_EVIDENCE: evidence },
   });
+  } finally {
+    const logs = path.join(user, "logs");
+    try {
+      if (fs.existsSync(logs)) fs.cpSync(logs, path.join(evidence, "vscode-logs"), { recursive: true });
+    } catch (error) { console.error("Could not retain VS Code logs", error); }
+  }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

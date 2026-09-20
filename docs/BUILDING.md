@@ -85,3 +85,9 @@ The automated panel check verifies the current file's active panel, not DOM rend
 Inspect the uploaded captures before claiming visual acceptance. Local runs record unknown
 Python/core commits unless supplied by the verified build; CI obtains these from the actual
 checked-out build inputs. The local executable alone does not prove its source commit.
+
+The real-runtime suite deliberately requests its first review before opening the review
+view. This guards #55: manual refresh must retain its explicit hidden-view permission
+through both timer scheduling and draining behind in-flight work. Automatic background
+refreshes still require a visible review view. Failed runs retain the last review state,
+a failure screenshot when available, and VS Code logs alongside the original test error.

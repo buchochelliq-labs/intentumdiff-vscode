@@ -12,6 +12,14 @@ async function waitFor(check: () => Promise<boolean>, label: string): Promise<vo
     if (await check()) return;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
+  const evidence = process.env.INTENTUMDIFF_REAL_EVIDENCE!;
+  try {
+    fs.writeFileSync(path.join(evidence, "failure-review-state.json"), JSON.stringify(
+      await vscode.commands.executeCommand("intentumdiff.test.getReviewState"), null, 2));
+  } catch (error) { console.error("Could not capture review state", error); }
+  if (process.platform === "linux") {
+    try { execFileSync("scrot", [path.join(evidence, "failure.png")]); } catch { /* retain original timeout */ }
+  }
   throw new Error(`Timed out: ${label}`);
 }
 async function files(): Promise<Entry[]> {
