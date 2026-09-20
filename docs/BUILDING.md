@@ -23,20 +23,84 @@ npm run test      # builds (tsc) then runs its suite
 (Its tsconfig pins `typeRoots` locally so the extension's `@types` don't leak into the nested
 package.)
 
-## Release media gate
+## Historical media inventory
 
 `release-media/manifest.json` declares the visual proof surfaces; validate with:
 
 ```bash
-python scripts/validate_release_media_manifest.py
+python scripts/validate_release_media_manifest.py --historical-inventory
 ```
 
-The recorder (`scripts/record-release-demo.ps1`) regenerates screenshots; the CI gate
-(`release-media-manifest-gate.yml`) enforces manifest validity on every change.
+The historical inventory workflow (`release-media-manifest-gate.yml`) checks the old files and runs provenance-validator regressions. Its success is not approval to publish those captures. The current real-runtime acceptance workflow records the exact installed candidate.
 
 ## VSIX packaging
 
-The release VSIX bundles, per platform: the compiled extension, the native
-`intentumdiff-live-server` binary (staged under `/live-server`), and the parser component set.
-Bundling is release-channel work driven by the publish pipeline; local development runs the
-extension host against a locally built live-server instead.
+The current generic VSIX includes the compiled extension and UI assets. It does not
+bundle a Python interpreter, native engine or parser component set. Configure an external
+IntentumDiff executable for real-runtime testing. Future runtime bundling is separate work.
+
+## Standalone integration runner
+
+```bash
+npm run test:integration
+```
+
+This downloads VS Code and runs **fake-server contract coverage** using the checked-in
+`test/fixtures/contract-languages.json` catalogue. It needs no parent monorepo or Python
+checkout. The catalogue describes test scenarios, not a certified runtime language list.
+Keep it outside the mutable workspace fixtures so repeated runs cannot shrink coverage.
+A desktop session (or Xvfb on Linux) and access to the VS Code download service are required.
+
+Optionally set `INTENTUMDIFF_TEST_PYTHON` to an external Python executable with the candidate
+IntentumDiff package and Rust library installed. The runner queries its supported languages
+with a bounded subprocess; an unavailable or invalid runtime fails explicitly instead of
+silently substituting fixture coverage. This option changes the language list only: the
+suite still uses its fake server and is **not real-engine acceptance**. Paths with spaces
+are passed as a single executable argument, without a shell.
+
+Issue #53 also tracks the separate real-runtime acceptance path. Issue #48 requires the
+exact VSIX installed in a clean profile with real engine output, artifact identities and
+recorded UI evidence. Unit tests, development-host contract tests and successful packaging
+do not satisfy that gate.
+
+### Real external-runtime acceptance
+
+Build the VSIX and install the reviewed wheel into a separate environment. Set
+`INTENTUMDIFF_TEST_VSIX` and `INTENTUMDIFF_TEST_CLI` to their absolute paths, then run
+`node out/test/integration/runRealTests.js` (under `xvfb-run -a` on headless Linux).
+The runner installs the VSIX into a temporary clean profile and loads those installed
+bytes in VS Code's test host; test-only observation commands are enabled by that host.
+It does not run the source checkout as the extension or replace the real CLI with a stub.
+
+The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
+Python/core commits and verifies the two parser component checksums before building.
+It covers Python and JavaScript partial-signature changes, native diff tabs, CodeLens,
+review-panel creation and recovery after committing valid source. Rust-only mode is
+required. It records VSIX/wheel identity, test results and actual X-display captures under
+`artifacts/real-runtime`; screenshots are evidence of the exercised windows, not a
+complete theme/layout/accessibility audit. Remaining #48 media criteria stay open.
+
+The automated panel check verifies the current file's active panel, not DOM rendering.
+Inspect the uploaded captures before claiming visual acceptance. Local runs record unknown
+Python/core commits unless supplied by the verified build; CI obtains these from the actual
+checked-out build inputs. The local executable alone does not prove its source commit.
+
+The real-runtime suite deliberately requests its first review before opening the review
+view. This guards #55: manual refresh must retain its explicit hidden-view permission
+through both timer scheduling and draining behind in-flight work. Automatic background
+refreshes still require a visible review view. Failed runs retain the last review state,
+a failure screenshot when available, and VS Code logs alongside the original test error.
+
+### Source fallback visual checks
+
+The real-runtime acceptance captures incomplete Python and JavaScript source using the installed VSIX and external Rust-backed CLI. For issues #56/#57, verify that every hunk action fits or wraps with Explorer and Chat open, and the panel prominently identifies source fallback with unknown semantic equivalence. Source-fallback presentation uses the Rust `semantic_contract` metadata; Python and the extension do not reclassify the comparison. Valid-source recovery must restore normal semantic labels. Static captures do not certify every theme or action.
+
+### Current acceptance media versus historical demos
+
+The real-runtime workflow now exercises a tracked PNG through the Rust image engine, checks that all six returned artifacts exist, and records dark, light, high-contrast and constrained-editor captures. It records an actual 16-second source/CodeLens → native diff → review workflow. The constrained editor is produced with VS Code zoom level 2 and is labelled accordingly; it is not a claimed 760px window capture.
+
+`artifacts/real-runtime/capture-manifest.json` binds each PNG/MP4 checksum to the installed VSIX version, SHA256 and tested checkout commit in `provenance.json`. PR builds record the synthetic merge commit. The harness removes old capture files first and validates identity/checksums; captures remain awaiting independent visual review until a reviewer checks the actual bytes. A successful capture is not itself visual approval.
+
+The older `release-media/manifest.json` captures lack recoverable build provenance. Its dimension check is a historical inventory check, not certification of the current candidate. Do not relabel those files with today's identity or advertise the current unpublished candidate as a released build. Use immutable commit URLs for reviewed repository media, and repeat acceptance after an authorized publication.
+
+Current legacy-format capture approval requires `python scripts/validate_release_media_manifest.py <manifest> --expected-version <candidate-version> --expected-commit <tested-build-commit>`. Missing identity, mismatched version, or mismatched commit fails. Omitting the candidate commit also fails. The historical inventory workflow runs the identity regression tests but does not certify those old images for publication. Current real-runtime captures use their own installed-VSIX identity and per-file checksum manifest.

@@ -606,8 +606,22 @@ export function renderDashboardHtml(model: ReviewDashboardModel, options: Render
   return page("IntentumDiff Review", body, options);
 }
 
+function isSourceFallback(model: ReviewPanelModel): boolean {
+  return model.diff?.metadata?.semantic_contract === "rust_source_fallback_v1";
+}
+
 export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions): string {
+  if (model.file.status !== "ready") {
+    const pending = model.file.status === "pending";
+    return page(`IntentumDiff - ${model.file.relativePath}`, `<section class="review-state" role="status" aria-live="polite" aria-busy="${pending}">
+      <h1>${escapeHtml(model.file.relativePath)}</h1>
+      <h2>${pending ? "Analysing changes…" : "Review unavailable"}</h2>
+      <p>${pending ? "This view updates when analysis finishes." : escapeHtml(model.file.description)}</p>
+      ${pending ? "" : actionButton("Retry", "refresh")}
+    </section>`, options);
+  }
   const file = model.file;
+  const sourceFallback = isSourceFallback(model);
   const payload = file.payload;
   const stats = diffStats(model.diffRows);
   const isAsset = isImageLikePath(file.relativePath) || model.assetDiff !== undefined;
@@ -617,7 +631,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
         <div class="product-context" title="${escapeHtml(file.relativePath)}">
           <div class="product-file-line">
             <strong>${escapeHtml(file.relativePath)}</strong>
-            <span class="file-mode-badge">${isAsset ? "Perceptual diff" : "Semantic diff"}</span>
+            <span class="file-mode-badge">${isAsset ? "Perceptual diff" : sourceFallback ? "Source fallback" : "Semantic diff"}</span>
           </div>
           <span>${escapeHtml(file.description)}</span>
         </div>
@@ -628,6 +642,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${viewTab("Evidence", "evidence", "evidence")}
           ${viewTab("Diagnostics", "diagnostics", "detail")}
         </nav>
+      ${sourceFallback ? `<p class="fallback-notice" role="note">Source fallback · Semantic equivalence unknown. Review the source changes; intent could not be established.</p>` : ""}
       </header>
       <header class="diff-topbar" aria-label="Current file review controls">
         <nav class="top-badges" aria-label="Review filters and counts">
@@ -639,7 +654,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${statBadge("insert", stats.insert)}
           ${statBadge("delete", stats.delete)}
           ${statBadge("change", stats.change)}
-          ${statBadge("semantic", stats.semantic)}
+          ${sourceFallback ? "" : statBadge("semantic", stats.semantic)}
         </nav>
         <div class="hero-actions" aria-label="Native VS Code diff actions">
           ${payload ? actionButton("Native diff", "openNativeDiff", payload, "native") : ""}
@@ -687,6 +702,8 @@ function hljsLanguageId(model: ReviewPanelModel): string {
 }
 
 function renderTextDiffWorkbench(model: ReviewPanelModel): string {
+  const sourceFallback = isSourceFallback(model);
+  const kind = sourceFallback ? "Source" : "Semantic";
   const payload = model.file.payload;
   const counts = decorationCountsForDiff(model.diff);
   const totalChanges = counts.added + counts.removed + counts.changed + counts.refactored + counts.moved;
@@ -697,17 +714,17 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
           <span></span><span></span><span>Base &middot; ${escapeHtml(model.ref)}</span>
           <span></span><span></span><span>Working tree</span>
         </div>
-        <div class="diff-table" role="table" aria-label="Semantic diff rows">
-          ${diffRows(rows, payload)}
+        <div class="diff-table" role="table" aria-label="${kind} diff rows">
+          ${diffRows(rows, payload, sourceFallback)}
         </div>`
-    : `<div class="diff-empty">No semantic changes to display in this file.</div>`;
+    : `<div class="diff-empty">No ${sourceFallback ? "source" : "semantic"} changes to display in this file.</div>`;
   return `<div class="diff-workbench text-diff-workbench">
-    <section class="diff-surface text-diff-surface" aria-label="Semantic diff">
+    <section class="diff-surface text-diff-surface" aria-label="${kind} diff">
       <div class="diff-toolbar text-diff-toolbar">
         <div class="diff-toolbar-heading">
           <strong>${escapeHtml(model.ref)}</strong>
           <span> &rarr; working tree</span>
-          <span class="diff-toolbar-tag">${totalChanges} semantic change${totalChanges === 1 ? "" : "s"}</span>
+          <span class="diff-toolbar-tag">${totalChanges} ${sourceFallback ? "source" : "semantic"} change${totalChanges === 1 ? "" : "s"}</span>
         </div>
         <div class="diff-nav diff-cta-actions" aria-label="Diff actions">
           <button class="icon-action" type="button" data-panel-action="collapseAll" title="Collapse unchanged / non-semantic regions">Collapse all</button>

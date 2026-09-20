@@ -1,3 +1,4 @@
+import { panelReviewFile } from "./reviewPanelState";
 import * as path from "path";
 import { execFile } from "child_process";
 import { existsSync } from "fs";
@@ -342,6 +343,7 @@ class PysdController implements vscode.Disposable {
   ]);
   private reviewRefreshQueued = false;
   private pendingReviewForceFull = false;
+  private pendingReviewAllowHidden = false;
   private pendingReviewReason = "refresh";
   private reviewGeneration = 0;
   private readonly reviewPolling: ReviewPollingService;
@@ -940,8 +942,8 @@ class PysdController implements vscode.Disposable {
       return;
     }
     const model = await this.buildReviewPanelModelForPayload(filePayload);
-    if (!model) {
-      // buildReviewPanelModelForPayload already surfaced a message.
+    if (!model || model.file.status !== "ready") {
+      // Export requires completed evidence; pending state is shown in the panel.
       return;
     }
     const notes = buildReleaseNotes(model.diff);
@@ -1181,6 +1183,7 @@ class PysdController implements vscode.Disposable {
     }
     this.pendingReviewReason = reason;
     this.pendingReviewForceFull = this.pendingReviewForceFull || options.forceFull === true;
+    this.pendingReviewAllowHidden = this.pendingReviewAllowHidden || options.allowHidden === true;
     if (this.isReviewRefreshBusy()) {
       this.reviewRefreshQueued = true;
       return;
@@ -1229,11 +1232,14 @@ class PysdController implements vscode.Disposable {
     }
     this.reviewRefreshQueued = false;
     this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
     this.pendingReviewReason = "refresh";
   }
 
   private async refreshReviewIfNeeded(): Promise<void> {
-    if (this.reviewRefreshRunning || !this.reviewViewVisible || !this.isEnabled()) {
+    // Explicit hidden-view permission (manual/webview refresh) must survive
+    // the timer boundary even when the review view is hidden.
+    if (this.reviewRefreshRunning || (!this.reviewViewVisible && !this.pendingReviewAllowHidden) || !this.isEnabled()) {
       return;
     }
     if (this.hasInFlightReviewWork()) {
@@ -1260,6 +1266,7 @@ class PysdController implements vscode.Disposable {
     const forceFull = this.pendingReviewForceFull;
     const reason = this.pendingReviewReason;
     this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
     this.reviewRefreshQueued = false;
     try {
       if (forceFull) {
@@ -1357,6 +1364,7 @@ class PysdController implements vscode.Disposable {
         guardrailCount: file.diff?.guardrail_violations?.length ?? 0,
         parseErrorCount: file.diff?.parse_errors?.length ?? 0,
         isStyleOnly: isStyleOnlyReviewDiff(file.diff),
+        assetDiff: file.diff?.metadata?.asset_diff,
       })),
       crossFileCount: this.reviewCrossFileEntries.length,
       pendingReviewCount:
@@ -1793,7 +1801,7 @@ class PysdController implements vscode.Disposable {
     this.telemetry.clearFuelHistory();
     this.reviewCrossFileEntries = [];
     this.reviewSnapshots.clear();
-    this.reviewPanelPayload = undefined;
+    if (!options.preserveRefreshState) this.reviewPanelPayload = undefined;
     this.diffSurfaces.clear();
     this.navigationIndexes.clear();
     this.semanticLineHintCache.clear();
@@ -1829,12 +1837,16 @@ class PysdController implements vscode.Disposable {
       return;
     }
     const filePayload: OpenFileReviewPayload = { ...payload, relativePath: payload.relativePath };
+    this.reviewPanelPayload = filePayload;
     const model = await this.buildReviewPanelModelForPayload(filePayload);
-    if (!model) {
+    if (!model || this.reviewPanelPayload !== filePayload) {
       return;
     }
-    this.reviewPanelPayload = filePayload;
     this.reviewPanelController?.open(model);
+    if (model.file.status === "pending") {
+      this.requestFullReview("open pending review panel");
+      return;
+    }
     // Draft the AI release narrative in the background (opt-in); refresh the panel
     // when it resolves. Non-blocking so the deterministic notes show immediately.
     void this.attachReleaseNarrative(filePayload, model);
@@ -1882,14 +1894,17 @@ class PysdController implements vscode.Disposable {
     filePayload: OpenFileReviewPayload,
   ): Promise<ReturnType<typeof buildReviewPanelModel> | undefined> {
     const file = this.reviewFiles.get(reviewKey(filePayload.folderUri, filePayload.relativePath));
-    if (!file || file.status !== "ready" || !file.diff || file.relativePath === ".intentumdiff-review") {
-      // A review that has not finished is an ordinary, expected state — not something the
-      // user must act on. Raising a notification for it made "not finished yet" and
-      // "something is wrong" look identical, and it is the first thing a new user sees.
-      // A transient status-bar message says the same thing without the alarm. (#24)
-      vscode.window.setStatusBarMessage("IntentumDiff: preparing semantic review…", 3000);
-      return undefined;
+    if (!file || file.status !== "ready" || !file.diff) {
+      const folderError = [".intentumdiff-review", ".intentumdiff-liveserver"]
+        .map(name => this.reviewFiles.get(reviewKey(filePayload.folderUri, name)))
+        .find(entry => entry?.status === "error");
+      const pendingFile = panelReviewFile({
+        folderName: path.basename(vscode.Uri.parse(filePayload.folderUri).fsPath),
+        folderUri: filePayload.folderUri, relativePath: filePayload.relativePath,
+      }, file, folderError, this.reviewSnapshots.has(filePayload.folderUri) && !this.hasInFlightReviewWork());
+      return buildReviewPanelModel(pendingFile, "", "", readLiveServerSettings().ref);
     }
+    if (file.relativePath === ".intentumdiff-review") return undefined;
     const folderUri = vscode.Uri.parse(filePayload.folderUri);
     const workingUri = vscode.Uri.file(path.join(folderUri.fsPath, filePayload.relativePath));
     const modifiedUri = await existingOrEmptyModifiedUri(
@@ -2018,8 +2033,10 @@ class PysdController implements vscode.Disposable {
     if (!this.reviewPanelPayload) {
       return;
     }
-    const model = await this.buildReviewPanelModelForPayload(this.reviewPanelPayload);
-    if (model) {
+    const payload = this.reviewPanelPayload;
+    const generation = this.reviewGeneration;
+    const model = await this.buildReviewPanelModelForPayload(payload);
+    if (model && this.reviewPanelPayload === payload && this.reviewGeneration === generation) {
       this.reviewPanelController?.refresh(model);
     }
   }
@@ -2615,9 +2632,11 @@ class PysdController implements vscode.Disposable {
     }
     const reason = this.pendingReviewReason;
     const forceFull = this.pendingReviewForceFull;
+    const allowHidden = this.pendingReviewAllowHidden;
     this.reviewRefreshQueued = false;
     this.pendingReviewForceFull = false;
-    this.scheduleReviewRefresh(reason, { forceFull });
+    this.pendingReviewAllowHidden = false;
+    this.scheduleReviewRefresh(reason, { forceFull, allowHidden });
   }
 
   private applyCachedDecorations(editor: vscode.TextEditor): void {

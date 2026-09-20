@@ -1,0 +1,88 @@
+name: Packaged extension real-runtime acceptance
+on:
+  pull_request:
+    paths:
+      - 'test/integration/**'
+      - '.github/workflows/real-runtime.yml'
+      - 'src/**'
+      - 'package*.json'
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "false"
+      MATURIN_PEP517_ARGS: "--profile dev"
+      INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: '1.95.0'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: buchochelliq-labs/intentumdiff-python
+          ref: d3fa0d0e480a74e0695d0f73a0133d2c42379b9b
+          path: .candidate-python
+          persist-credentials: false
+      - name: Provision reviewed parser components and core
+        env:
+          GH_TOKEN: ${{ secrets.SPLIT_REPO_TOKEN || github.token }}
+        run: |
+          python - <<'PY'
+          import hashlib, io, pathlib, subprocess, zipfile
+          dest = pathlib.Path('.candidate-components')
+          dest.mkdir()
+          components = [
+            ('intentumdiff-python-parser', 8829663001, 'python_parser.wasm', 'c0e3c1d0d0724ac6f07fc0a92655567d1e5d801a07e2c63b0837a2a938c12393'),
+            ('intentumdiff-js-ts-parser', 10608989692, 'js_ts_parser.wasm', '3990e217dbadb3624a2793f9a08c600b1e9c3b6d0accfbf7b5fe50712a7e8a42'),
+          ]
+          for repo, artifact, filename, digest in components:
+              data = subprocess.check_output(['gh', 'api', f'/repos/buchochelliq-labs/{repo}/actions/artifacts/{artifact}/zip'])
+              with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                  matches = [n for n in archive.namelist() if pathlib.PurePosixPath(n).name in (filename, 'intentumdiff_' + filename, 'intentdiff_' + filename)]
+                  assert len(matches) == 1, matches
+                  wasm = archive.read(matches[0])
+              assert hashlib.sha256(wasm).hexdigest() == digest, filename
+              (dest / filename).write_bytes(wasm)
+          PY
+          python .candidate-python/scripts/provision_build_inputs.py --wasm-dir "$PWD/.candidate-components"
+      - name: Build and install external candidate wheel
+        run: |
+          python -m pip install cffi
+          python -m pip wheel ./.candidate-python --no-deps --wheel-dir .candidate-wheels
+          python -m venv .candidate-runtime
+          .candidate-runtime/bin/pip install .candidate-wheels/*.whl
+          echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-runtime/bin/intentumdiff" >> "$GITHUB_ENV"
+          sha256sum .candidate-wheels/*.whl > candidate-wheel.sha256
+          echo "INTENTUMDIFF_TEST_PYTHON_COMMIT=$(git -C .candidate-python rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "INTENTUMDIFF_TEST_CORE_COMMIT=$(git -C .candidate-python/build/intentumdiff-core rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Build exact VSIX
+        run: |
+          npm ci
+          npm run vsix
+          echo "INTENTUMDIFF_TEST_VSIX=$PWD/intentumdiff-$(node -p 'require("./package.json").version').vsix" >> "$GITHUB_ENV"
+      - name: Exercise installed extension bytes with real external engine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb scrot ffmpeg
+          xvfb-run -a -s '-screen 0 1440x1000x24' node out/test/integration/runRealTests.js
+      - name: Retain actual evidence and logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: real-runtime-acceptance
+          path: |
+            artifacts/real-runtime/
+            candidate-wheel.sha256
+          if-no-files-found: warn

@@ -36,3 +36,5 @@ resources/*.svg
 !resources/review-icon-light.svg
 tsconfig.json
 package-lock.json
+.candidate*/
+candidate-wheel.sha256
