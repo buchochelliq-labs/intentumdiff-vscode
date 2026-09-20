@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath, runTests } from "@vscode/test-electron";
 
+import { createCandidateManifest, validateCandidateManifest } from "./candidateMedia";
+
 async function main(): Promise<void> {
   const root = path.resolve(__dirname, "../../..");
   const vsix = process.env.INTENTUMDIFF_TEST_VSIX;
@@ -17,6 +19,7 @@ async function main(): Promise<void> {
   const user = path.join(temp, "profile"), extensions = path.join(temp, "extensions");
   const workspace = path.join(temp, "workspace");
   const evidence = path.join(root, "artifacts", "real-runtime");
+  fs.rmSync(evidence, { recursive: true, force: true });
   fs.mkdirSync(evidence, { recursive: true });
   fs.mkdirSync(path.join(user, "User"), { recursive: true });
   fs.mkdirSync(workspace);
@@ -53,6 +56,10 @@ async function main(): Promise<void> {
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1", INTENTUMDIFF_REAL_WORKSPACE: workspace,
       INTENTUMDIFF_REAL_INSTALLED: installed, INTENTUMDIFF_REAL_EVIDENCE: evidence },
   });
+  const identity = JSON.parse(fs.readFileSync(path.join(evidence, "provenance.json"), "utf8"));
+  const manifest = createCandidateManifest(evidence, identity);
+  validateCandidateManifest(evidence, manifest, identity);
+  fs.writeFileSync(path.join(evidence, "capture-manifest.json"), JSON.stringify(manifest, null, 2));
   } finally {
     const logs = path.join(user, "logs");
     try {

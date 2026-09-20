@@ -75,7 +75,7 @@ jobs:
       - name: Exercise installed extension bytes with real external engine
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb scrot
+          sudo apt-get install -y xvfb scrot ffmpeg
           xvfb-run -a -s '-screen 0 1440x1000x24' node out/test/integration/runRealTests.js
       - name: Retain actual evidence and logs
         if: always()

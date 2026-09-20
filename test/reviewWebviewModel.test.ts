@@ -1569,3 +1569,14 @@ test("source fallback presents unknown equivalence without semantic hunk claims 
   assert.equal(recovered.querySelector(".file-mode-badge")?.textContent, "Semantic diff");
   assert.equal(recovered.querySelector(".hunk-title strong")?.textContent, "Semantic hunk");
 });
+
+test("pending and failed reviews render explicit states without empty diff controls", () => {
+  for (const status of ["pending", "error"] as const) {
+    const file: ReviewFile = { ...sampleFile, status, diff: undefined, error: "Engine unavailable" };
+    const doc = new JSDOM(renderPanelHtml(buildReviewPanelModel(file, "", "", "HEAD"), { nonce: "n", cspSource: "vscode-resource:" })).window.document;
+    assert.ok(doc.querySelector(".review-state"));
+    assert.equal(doc.querySelector(".diff-table"), null);
+    assert.equal(doc.querySelector('[data-command="stageFile"]'), null);
+    assert.match(doc.body.textContent ?? "", status === "pending" ? /Analysing/ : /Engine unavailable/);
+  }
+});

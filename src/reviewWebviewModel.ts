@@ -611,6 +611,15 @@ function isSourceFallback(model: ReviewPanelModel): boolean {
 }
 
 export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions): string {
+  if (model.file.status !== "ready") {
+    const pending = model.file.status === "pending";
+    return page(`IntentumDiff - ${model.file.relativePath}`, `<section class="review-state" role="status" aria-live="polite" aria-busy="${pending}">
+      <h1>${escapeHtml(model.file.relativePath)}</h1>
+      <h2>${pending ? "Analysing changes…" : "Review unavailable"}</h2>
+      <p>${pending ? "This view updates when analysis finishes." : escapeHtml(model.file.description)}</p>
+      ${pending ? "" : actionButton("Retry", "refresh")}
+    </section>`, options);
+  }
   const file = model.file;
   const sourceFallback = isSourceFallback(model);
   const payload = file.payload;

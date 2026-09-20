@@ -95,3 +95,11 @@ a failure screenshot when available, and VS Code logs alongside the original tes
 ### Source fallback visual checks
 
 The real-runtime acceptance captures incomplete Python and JavaScript source using the installed VSIX and external Rust-backed CLI. For issues #56/#57, verify that every hunk action fits or wraps with Explorer and Chat open, and the panel prominently identifies source fallback with unknown semantic equivalence. Source-fallback presentation uses the Rust `semantic_contract` metadata; Python and the extension do not reclassify the comparison. Valid-source recovery must restore normal semantic labels. Static captures do not certify every theme or action.
+
+### Current acceptance media versus historical demos
+
+The real-runtime workflow now exercises a tracked PNG through the Rust image engine, checks that all six returned artifacts exist, and records dark, light, high-contrast and constrained-editor captures. It records an actual 16-second source/CodeLens → native diff → review workflow. The constrained editor is produced with VS Code zoom level 2 and is labelled accordingly; it is not a claimed 760px window capture.
+
+`artifacts/real-runtime/capture-manifest.json` binds each PNG/MP4 checksum to the installed VSIX version, SHA256 and tested checkout commit in `provenance.json`. PR builds record the synthetic merge commit. The harness removes old capture files first and validates identity/checksums; captures remain awaiting independent visual review until a reviewer checks the actual bytes. A successful capture is not itself visual approval.
+
+The older `release-media/manifest.json` captures lack recoverable build provenance. Its dimension check is a historical inventory check, not certification of the current candidate. Do not relabel those files with today's identity or advertise the current unpublished candidate as a released build. Use immutable commit URLs for reviewed repository media, and repeat acceptance after an authorized publication.
