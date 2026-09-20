@@ -63,3 +63,25 @@ Issue #53 also tracks the separate real-runtime acceptance path. Issue #48 requi
 exact VSIX installed in a clean profile with real engine output, artifact identities and
 recorded UI evidence. Unit tests, development-host contract tests and successful packaging
 do not satisfy that gate.
+
+### Real external-runtime acceptance
+
+Build the VSIX and install the reviewed wheel into a separate environment. Set
+`INTENTUMDIFF_TEST_VSIX` and `INTENTUMDIFF_TEST_CLI` to their absolute paths, then run
+`node out/test/integration/runRealTests.js` (under `xvfb-run -a` on headless Linux).
+The runner installs the VSIX into a temporary clean profile and loads those installed
+bytes in VS Code's test host; test-only observation commands are enabled by that host.
+It does not run the source checkout as the extension or replace the real CLI with a stub.
+
+The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
+Python/core commits and verifies the two parser component checksums before building.
+It covers Python and JavaScript partial-signature changes, native diff tabs, CodeLens,
+review-panel creation and recovery after committing valid source. Rust-only mode is
+required. It records VSIX/wheel identity, test results and actual X-display captures under
+`artifacts/real-runtime`; screenshots are evidence of the exercised windows, not a
+complete theme/layout/accessibility audit. Remaining #48 media criteria stay open.
+
+The automated panel check verifies the current file's active panel, not DOM rendering.
+Inspect the uploaded captures before claiming visual acceptance. Local runs record unknown
+Python/core commits unless supplied by the verified build; CI obtains these from the actual
+checked-out build inputs. The local executable alone does not prove its source commit.
