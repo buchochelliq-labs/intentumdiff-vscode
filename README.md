@@ -7,9 +7,11 @@ Bring IntentumDiff into VS Code with live semantic diff feedback, a
 group-first **Semantic Changes** review tree, native diff navigation,
 guardrail diagnostics, and cross-file refactoring visibility.
 
-![IntentumDiff VS Code demo](media/intentumdiff-vscode-recording.gif)
+Actual prerelease candidate, using the installed VSIX and external Rust-backed CLI. [Capture provenance and review scope](https://github.com/buchochelliq-labs/intentumdiff-vscode/tree/3630a6891f13d20f0287f2fc7d598e8cae0e7319/docs/evidence/2026-09-20-desktop).
 
-![Semantic Changes groups](media/semantic-changes-groups.png)
+![Actual IntentumDiff candidate workflow](https://raw.githubusercontent.com/buchochelliq-labs/intentumdiff-vscode/3630a6891f13d20f0287f2fc7d598e8cae0e7319/docs/evidence/2026-09-20-desktop/workflow-reviewed.gif)
+
+![Actual light-theme asset review](https://raw.githubusercontent.com/buchochelliq-labs/intentumdiff-vscode/3630a6891f13d20f0287f2fc7d598e8cae0e7319/docs/evidence/2026-09-20-desktop/asset-light.png)
 
 ## Highlights
 
