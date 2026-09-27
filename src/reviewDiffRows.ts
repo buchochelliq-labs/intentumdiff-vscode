@@ -12,7 +12,7 @@ export interface DiffStats {
 }
 
 
-export function diffRow(row: ReviewDiffRow, hunkId = ""): string {
+export function diffRow(row: ReviewDiffRow, hunkId = "", sourceFallback = false): string {
   if (row.kind === "collapsed") {
     return collapsedDiffRow(row);
   }
@@ -25,7 +25,7 @@ export function diffRow(row: ReviewDiffRow, hunkId = ""): string {
   const editable = hunkId && !newMissing
     ? ` contenteditable="true" spellcheck="false" data-hunk-edit-cell data-hunk-id="${escapeHtml(hunkId)}"`
     : "";
-  return `<div id="${escapeHtml(row.id ?? "")}" class="diff-row diff-${row.kind}${semantic}${intent}" data-row-kind="${escapeHtml(row.kind)}"${row.semantic ? " data-semantic=\"true\"" : ""}${row.intent ? ` data-intent="${escapeHtml(row.intent)}"` : ""} title="${row.intent === "refactoring" ? "Refactoring evidence line" : row.semantic ? "Semantic evidence line" : ""}">
+  return `<div id="${escapeHtml(row.id ?? "")}" class="diff-row diff-${row.kind}${semantic}${intent}" data-row-kind="${escapeHtml(row.kind)}"${row.semantic ? " data-semantic=\"true\"" : ""}${row.intent ? ` data-intent="${escapeHtml(row.intent)}"` : ""} title="${sourceFallback ? "Source evidence line; semantic equivalence unknown" : row.intent === "refactoring" ? "Refactoring evidence line" : row.semantic ? "Semantic evidence line" : ""}">
     <span class="diff-marker">${row.semantic ? `<span class="semantic-token">i</span>` : escapeHtml(rowMarker(row))}</span>
     <span class="line-no">${row.oldLine ?? ""}</span>
     <code class="${oldMissing ? "empty-code" : "old-code"}">${oldMissing ? `<span class="empty-label">inserted</span>` : renderCodeText(row.oldText)}</code>
@@ -93,7 +93,7 @@ export function collapsedDiffRow(row: ReviewDiffRow): string {
   </div>`;
 }
 
-export function diffRows(rows: ReviewDiffRow[], payload?: ReviewWebviewPayload): string {
+export function diffRows(rows: ReviewDiffRow[], payload?: ReviewWebviewPayload, sourceFallback = false): string {
   let result = "";
   let inHunk = false;
   let hunkId = "";
@@ -102,19 +102,19 @@ export function diffRows(rows: ReviewDiffRow[], payload?: ReviewWebviewPayload):
     const important = row.kind !== "equal" && row.kind !== "collapsed" || row.semantic === true;
     if (important && !inHunk) {
       hunkId = `hunk-${index}`;
-      result += hunkHeader(rows, index, payload, hunkId);
+      result += hunkHeader(rows, index, payload, hunkId, sourceFallback);
       inHunk = true;
     }
     if (!important) {
       inHunk = false;
       hunkId = "";
     }
-    result += diffRow(row, inHunk ? hunkId : "");
+    result += diffRow(row, inHunk ? hunkId : "", sourceFallback);
   }
   return result;
 }
 
-export function hunkHeader(rows: ReviewDiffRow[], startIndex: number, payload: ReviewWebviewPayload | undefined, hunkId: string): string {
+export function hunkHeader(rows: ReviewDiffRow[], startIndex: number, payload: ReviewWebviewPayload | undefined, hunkId: string, sourceFallback = false): string {
   let count = 0;
   for (let index = startIndex; index < rows.length; index += 1) {
     const row = rows[index];
@@ -129,8 +129,8 @@ export function hunkHeader(rows: ReviewDiffRow[], startIndex: number, payload: R
   const scopeTrail = hunkScopeTrail(rows, startIndex);
   const actions = payload ? hunkActionButtons(payload, row, rows.slice(startIndex, startIndex + count), hunkId) : "";
   return `<div class="diff-hunk">
-    <span class="hunk-glyph">intent</span>
-    <span class="hunk-title"><strong>Semantic hunk</strong><small>${escapeHtml(oldLabel)} -> ${escapeHtml(newLabel)}</small>${scopeTrailHtml(scopeTrail, row.id)}</span>
+    <span class="hunk-glyph">${sourceFallback ? "source" : "intent"}</span>
+    <span class="hunk-title"><strong>${sourceFallback ? "Source" : "Semantic"} hunk</strong><small>${escapeHtml(oldLabel)} -> ${escapeHtml(newLabel)}</small>${scopeTrailHtml(scopeTrail, row.id)}</span>
     <span class="hunk-connector" aria-hidden="true"></span>
     <span class="hunk-count">${count} evidence ${count === 1 ? "line" : "lines"}</span>
     ${actions}
@@ -158,7 +158,7 @@ export function hunkActionButtons(payload: ReviewWebviewPayload, row: ReviewDiff
       ? { position: { start_line: nativeLine, start_col: 0, end_line: nativeLine, end_col: 0 } }
       : {}),
   };
-  return `<span class="hunk-actions" aria-label="Semantic hunk actions">
+  return `<span class="hunk-actions" aria-label="Hunk actions">
     ${actionButton("Edit in native", "openNativeDiff", editInNativePayload, "native")}
     ${actionButton("Stage hunk", "stageHunk", { ...hunkPayload, actionKind: "stageHunk" }, "accept")}
     ${actionButton("Revert hunk", "revertHunk", { ...hunkPayload, actionKind: "revertHunk" }, "risk")}

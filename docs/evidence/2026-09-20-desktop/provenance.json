@@ -1,0 +1,9 @@
+{
+  "vsix_sha256": "fb7a109b9b54fc909d9fc146269464d8f1c34735e85441fdfa9a957d51d22f9d",
+  "extension_version": "0.0.2-beta.1",
+  "extension_commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+  "vscode_version": "1.138.0",
+  "python_commit": "d3fa0d0e480a74e0695d0f73a0133d2c42379b9b",
+  "core_commit": "2e58c19ca9d37a9a9c4d7ee96750af1a416c2765",
+  "mode": "installed VSIX bytes loaded by VS Code test host; external real CLI"
+}
