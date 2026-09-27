@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: buchochelliq-labs/intentumdiff-python
-          ref: d3fa0d0e480a74e0695d0f73a0133d2c42379b9b
+          ref: 9eb3b7cdf475faa932d46d80572b2d53acfb999d # merged thin API migration (Python #55/#58)
           path: .candidate-python
           persist-credentials: false
       - name: Provision reviewed parser components and core
