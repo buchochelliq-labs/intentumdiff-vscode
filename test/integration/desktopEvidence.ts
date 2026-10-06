@@ -1,6 +1,7 @@
 /** Observe the actual isolated Electron window, never infer UI state from commands. */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 
 interface Target { type: string; webSocketDebuggerUrl?: string; }
 interface Reply { id?: number; method?: string; params?: { context?: { id: number } }; result?: { result?: { value?: unknown } }; error?: unknown; }
@@ -37,12 +38,13 @@ async function evaluateTarget(url: string, expression: string): Promise<boolean>
 }
 
 /** Selectors run against renderer documents, including VS Code's webview frames. */
-export async function waitForVisible(selector: string, click = false, requireNoHorizontalOverflow = false, expectedText?: string): Promise<void> {
+export async function waitForVisible(selector: string, click = false, requireNoHorizontalOverflow = false, expectedText?: string, afterClickSelector?: string): Promise<void> {
   const profile = process.env.INTENTUMDIFF_REAL_PROFILE;
   if (!profile) throw new Error("Missing isolated desktop profile");
   const deadline = Date.now() + 30000;
   let lastError: unknown;
   const expression = `(() => {
+    if (document.readyState !== "complete" || document.visibilityState === "hidden") return false;
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) return false;
     ${expectedText === undefined ? "" : `if (element.textContent.trim() !== ${JSON.stringify(expectedText)}) return false;`}
@@ -52,6 +54,8 @@ export async function waitForVisible(selector: string, click = false, requireNoH
     if (rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) return false;
     ${requireNoHorizontalOverflow ? "if (element.scrollWidth > element.clientWidth + 1) return false;" : ""}
     ${click ? "element.click();" : ""}
+    ${afterClickSelector === undefined ? "" : `const selected = document.querySelector(${JSON.stringify(afterClickSelector)});
+    if (!selected || selected.getBoundingClientRect().height <= 0 || getComputedStyle(selected).display === "none") return false;`}
     return true;
   })()`;
   while (Date.now() < deadline) {
@@ -65,6 +69,10 @@ export async function waitForVisible(selector: string, click = false, requireNoH
       }
     } catch (error) { lastError = error; }
     await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const evidence = process.env.INTENTUMDIFF_REAL_EVIDENCE;
+  if (evidence && process.platform === "linux") {
+    try { execFileSync("scrot", [path.join(evidence, "failure.png")]); } catch { /* preserve the readiness error */ }
   }
   throw new Error(`Desktop element never became visible: ${selector}; ${String(lastError ?? "no matching rendered element")}`);
 }

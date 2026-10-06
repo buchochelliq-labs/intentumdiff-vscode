@@ -164,10 +164,12 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("intentumdiff.expandSemanticDiffContext");
   await capture("capability-expanded-context");
   await vscode.commands.executeCommand("intentumdiff.openReviewPanel", sourcePayload);
-  await waitForVisible('.product-tab[data-review-view="evidence"]', true);
+  await waitForVisible('.product-tab[data-review-view="evidence"]', true, false, undefined,
+    '.diff-app[data-review-view="evidence"] [data-review-page="evidence"]');
   await waitForVisible('.diff-app[data-review-view="evidence"] [data-review-page="evidence"]');
   await capture("capability-evidence");
-  await waitForVisible('.product-tab[data-review-view="intent"]', true);
+  await waitForVisible('.product-tab[data-review-view="intent"]', true, false, undefined,
+    '.diff-app[data-review-view="intent"] [data-review-page="intent"]');
   await waitForVisible('.diff-app[data-review-view="intent"] [data-review-page="intent"]');
   await capture("capability-intent");
   await vscode.commands.executeCommand("intentumdiff.openReviewDashboard");
