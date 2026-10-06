@@ -216,9 +216,10 @@
     "new": "# Databricks notebook source\nfrom pyspark.sql import functions as F\n\n# COMMAND ----------\nactive = spark.table(\"customers\").filter(F.col(\"active\") == True).select(\"id\", \"name\")\n",
     "expected_summary": "Add a projection selecting id and name to the active-customer DataFrame; retain the source table and active filter.",
     "caveats": [
-      "This is Python source exported from a Databricks notebook. Notebook markers are comments; capture the actual filename/content routing and do not imply notebook-specific cell semantics.",
+      "This Python source exported from a Databricks notebook routes through Python. Notebook markers are comments; this does not demonstrate notebook-specific cell semantics.",
       "Databricks workflow YAML is covered separately by databricks-workflow."
-    ]
+    ],
+    "expected_language": "python"
   },
   {
     "language": "databricks-workflow",
@@ -953,7 +954,8 @@
     "expected_summary": "Alias users, LEFT JOIN orders, add COUNT(o.id) order_count, group by user columns, and order descending by order_count; preserve active-user filter.",
     "caveats": [
       "The .sql filename routes through SQL. This example demonstrates the observed SQL route, not distinct T-SQL parser selection; no language override is applied."
-    ]
+    ],
+    "expected_language": "sql"
   },
   {
     "language": "tsx",

@@ -8,6 +8,7 @@ import { waitForVisible } from "./desktopEvidence";
 interface Example {
   language: string; filename: string; old: string; new: string;
   expected_summary: string; caveats: string[];
+  expected_language?: string;
 }
 interface Entry {
   relativePath: string; status: string; language?: string; changeCount: number;
@@ -75,6 +76,7 @@ export async function run(): Promise<void> {
       assert.ok(observed.language && observed.language !== "binary", `${relativePath}: text fixture routed as ${observed.language}`);
       assert.ok(observed.changeCount > 0, `${relativePath}: meaningful edit returned no changes`);
       assert.equal(observed.isStyleOnly, false, `${relativePath}: meaningful edit reported as style-only`);
+      if (f.expected_language) assert.equal(observed.language, f.expected_language, `${relativePath}: unexpected routing`);
       await vscode.commands.executeCommand("intentumdiff.openReviewPanel", payload);
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputWebview)), "review tab");
       await waitForVisible(".product-file-line strong", false, false, relativePath);
