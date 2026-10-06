@@ -1,4 +1,3 @@
-import { reviewTargetForChange } from "./mapper";
 import { contentLabel, type ContentClass } from "./contentClass";
 import type { ChangeGroup, SemanticChange, SemanticDiff } from "./types";
 
@@ -118,12 +117,12 @@ export function intentForLine(diff: SemanticDiff, side: IntentSide, line: number
       continue;
     }
     for (const change of groupChanges(group, changes)) {
-      const target = reviewTargetForChange(change);
-      if (!target || target.side !== side) {
+      const position = (side === "base" ? change.old_node : change.new_node)?.position;
+      if (!position) {
         continue;
       }
-      const start = Math.max(target.position.start_line, 0);
-      const end = Math.max(target.position.end_line, start);
+      const start = Math.max(position.start_line, 0);
+      const end = Math.max(position.end_line, start);
       if (line >= start && line <= end) {
         return { category, why: groupWhy(group, changes), groupIndex };
       }
@@ -139,12 +138,12 @@ export function intentForLine(diff: SemanticDiff, side: IntentSide, line: number
     }
     const change = changes[index];
     const category = describeKind(kindForChange(change));
-    const target = reviewTargetForChange(change);
-    if (!category || !target || target.side !== side) {
+    const position = (side === "base" ? change.old_node : change.new_node)?.position;
+    if (!category || !position) {
       continue;
     }
-    const start = Math.max(target.position.start_line, 0);
-    const end = Math.max(target.position.end_line, start);
+    const start = Math.max(position.start_line, 0);
+    const end = Math.max(position.end_line, start);
     if (line >= start && line <= end) {
       return { category, why: changeWhy(change), groupIndex: -(index + 1) };
     }
@@ -185,11 +184,11 @@ function representativeLine(
 ): number | undefined {
   let best: number | undefined;
   for (const change of groupChanges(group, changes)) {
-    const target = reviewTargetForChange(change);
-    if (!target || target.side !== side) {
+    const position = (side === "base" ? change.old_node : change.new_node)?.position;
+    if (!position) {
       continue;
     }
-    const line = Math.max(target.position.start_line, 0);
+    const line = Math.max(position.start_line, 0);
     if (best === undefined || line < best) {
       best = line;
     }
@@ -287,12 +286,12 @@ export function buildIntentLenses(diff: SemanticDiff, side: IntentSide): IntentL
     if (!category) {
       return;
     }
-    const target = reviewTargetForChange(change);
-    if (!target || target.side !== side) {
+    const position = (side === "base" ? change.old_node : change.new_node)?.position;
+    if (!position) {
       return;
     }
     lenses.push({
-      line: Math.max(target.position.start_line, 0),
+      line: Math.max(position.start_line, 0),
       side,
       category,
       why: changeWhy(change),

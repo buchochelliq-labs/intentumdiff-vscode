@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import * as vscode from "vscode";
+import { waitForVisible } from "./desktopEvidence";
 
 interface Entry { relativePath: string; status: string; changeCount: number;
   assetDiff?: { status: string; artifacts: Record<string, string> };
@@ -153,7 +154,9 @@ export async function run(): Promise<void> {
   const lenses = await vscode.commands.executeCommand<vscode.CodeLens[]>("vscode.executeCodeLensProvider", source);
   const peek = lenses?.find(lens => lens.command?.command === "intentumdiff.peekIntent")?.command;
   assert.ok(peek, "A real intent lens must supply Peek arguments");
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(source), { preview: false });
   await vscode.commands.executeCommand(peek.command, ...(peek.arguments ?? []));
+  await waitForVisible(".peekview-widget .ref-tree");
   await capture("capability-peek");
   await vscode.commands.executeCommand("closeReferenceSearch");
   await vscode.commands.executeCommand("intentumdiff.openSemanticOnlyDiff", sourcePayload);
@@ -161,11 +164,14 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("intentumdiff.expandSemanticDiffContext");
   await capture("capability-expanded-context");
   await vscode.commands.executeCommand("intentumdiff.openReviewPanel", sourcePayload);
-  await vscode.commands.executeCommand("intentumdiff.reviewPanel.toggleEvidenceDrawer");
-  await capture("capability-evidence-drawer");
-  await vscode.commands.executeCommand("intentumdiff.reviewPanel.toggleRail");
-  await capture("capability-review-rail");
+  await waitForVisible('.product-tab[data-review-view="evidence"]', true);
+  await waitForVisible('.diff-app[data-review-view="evidence"] [data-review-page="evidence"]');
+  await capture("capability-evidence");
+  await waitForVisible('.product-tab[data-review-view="intent"]', true);
+  await waitForVisible('.diff-app[data-review-view="intent"] [data-review-page="intent"]');
+  await capture("capability-intent");
   await vscode.commands.executeCommand("intentumdiff.openReviewDashboard");
+  await waitForVisible(".dashboard-pills", false, true);
   await capture("capability-dashboard");
   await vscode.commands.executeCommand("intentumdiff.openDiagnostics");
   await capture("capability-diagnostics");

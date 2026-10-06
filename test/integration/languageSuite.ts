@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as vscode from "vscode";
+import { waitForVisible } from "./desktopEvidence";
 
 interface Example {
   language: string; filename: string; old: string; new: string;
@@ -70,10 +71,15 @@ export async function run(): Promise<void> {
       await vscode.commands.executeCommand("intentumdiff.refreshReview");
       await waitFor(async () => (await state()).some(x => x.relativePath === relativePath && (x.status === "ready" || x.status === "error")), relativePath);
       const observed = (await state()).find(x => x.relativePath === relativePath)!;
+      assert.equal(observed.status, "ready", `${relativePath}: engine review failed`);
+      assert.ok(observed.language && observed.language !== "binary", `${relativePath}: text fixture routed as ${observed.language}`);
+      assert.ok(observed.changeCount > 0, `${relativePath}: meaningful edit returned no changes`);
+      assert.equal(observed.isStyleOnly, false, `${relativePath}: meaningful edit reported as style-only`);
       await vscode.commands.executeCommand("intentumdiff.openReviewPanel", payload);
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputWebview)), "review tab");
+      await waitForVisible(".product-file-line strong", false, false, relativePath);
+      await waitForVisible('.diff-app[data-diff-mode="text"] .diff-workbench');
       await capture(`language-${f.language}-review`);
-      assert.equal(observed.status, "ready", `${relativePath}: engine review failed`);
       await vscode.commands.executeCommand("intentumdiff.openFullDiff", payload);
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputTextDiff && t.input.modified.toString() === uri.toString())), "native diff");
       await capture(`language-${f.language}-native`);

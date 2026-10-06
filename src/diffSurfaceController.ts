@@ -84,7 +84,8 @@ export class DiffSurfaceController {
 
   forFile(folderUri: string, relativePath: string): OpenedDiffContext | undefined {
     for (const context of this.openDiffContexts.values()) {
-      if (context.mode === "full" && context.folderUri === folderUri && context.relativePath === relativePath) {
+      if (context.mode === "full" && context.folderUri === folderUri && context.relativePath === relativePath
+          && this.openDiffContexts.get(context.modifiedUri.toString()) === context) {
         return context;
       }
     }

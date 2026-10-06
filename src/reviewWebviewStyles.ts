@@ -790,7 +790,7 @@ export function styles(): string {
     body.vscode-light .fuel-sparkline i { background:linear-gradient(180deg,var(--cyan),var(--green)); }
     @media (max-width: 920px) {
       .dashboard-topbar { grid-template-columns:minmax(0,1fr); grid-template-areas:"title" "pills" "actions"; align-items:start; }
-      .dashboard-pills { flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
+      .dashboard-pills { flex-wrap:wrap; padding-bottom:2px; }
       .dashboard-actions { justify-content:flex-start; width:100%; }
       .dashboard-board { padding:0 42px; }
       .dashboard-app[data-left-pinned="true"] .dashboard-board { padding-left:42px; }

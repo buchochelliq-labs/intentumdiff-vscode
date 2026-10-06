@@ -128,9 +128,13 @@ independent source expectation and observed status; a passing collection run is 
 correctness approval. All output and images require independent inspection before publication.
 
 The capability batch additionally captures Peek, semantic-only diff, expanded context,
-evidence drawer, review rail, dashboard and diagnostics. These are requested through actual
-extension commands, not fabricated webview state. A command returning does not prove its
-rendered result: inspect each image before marking the capability covered. Existing clean
+Evidence view, Intent view, dashboard and diagnostics. The current UI has Evidence and Intent
+tabs; the legacy drawer/rail commands have no corresponding rendered panels and are not
+captured as those capabilities.
+Peek and Evidence captures wait for visible DOM in the isolated Electron desktop. Language
+captures reject binary, empty and style-only results for these meaningful edits, then wait
+for the rendered text review. A command returning does not prove its rendered result:
+inspect each image before marking the capability covered. Existing clean
 profile, installed VSIX, real external engine, capture hash and provenance rules still apply.
 
 Artifacts use `real-runtime-capabilities` and `real-runtime-languages-0` through `-3` names.
