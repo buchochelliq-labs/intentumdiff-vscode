@@ -30,7 +30,7 @@ async function evaluateTarget(url: string, expression: string): Promise<boolean>
     });
     await send("Runtime.enable");
     for (const contextId of contexts) {
-      const reply = await send("Runtime.evaluate", { expression, contextId, returnByValue: true });
+      const reply = await send("Runtime.evaluate", { expression, contextId, returnByValue: true, awaitPromise: true });
       if (reply.result?.result?.value === true) return true;
     }
     return false;
@@ -43,7 +43,7 @@ export async function waitForVisible(selector: string, click = false, requireNoH
   if (!profile) throw new Error("Missing isolated desktop profile");
   const deadline = Date.now() + 30000;
   let lastError: unknown;
-  const expression = `(() => {
+  const expression = `(async () => {
     if (document.readyState !== "complete" || document.visibilityState === "hidden") return false;
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) return false;
@@ -54,7 +54,8 @@ export async function waitForVisible(selector: string, click = false, requireNoH
     if (rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) return false;
     ${requireNoHorizontalOverflow ? "if (element.scrollWidth > element.clientWidth + 1) return false;" : ""}
     ${click ? "element.click();" : ""}
-    ${afterClickSelector === undefined ? "" : `const selected = document.querySelector(${JSON.stringify(afterClickSelector)});
+    ${afterClickSelector === undefined ? "" : `await new Promise(resolve => setTimeout(resolve, 750));
+    const selected = document.querySelector(${JSON.stringify(afterClickSelector)});
     if (!selected || selected.getBoundingClientRect().height <= 0 || getComputedStyle(selected).display === "none") return false;`}
     return true;
   })()`;
