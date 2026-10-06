@@ -1,0 +1,1084 @@
+[
+  {
+    "language": "abap",
+    "filename": "code.abap",
+    "name": "Abap",
+    "extensions": [
+      ".abap"
+    ],
+    "old": "REPORT z_demo.\n\nFORM greet.\n  WRITE: 'Hello, World'.\nENDFORM.\n",
+    "new": "REPORT z_demo.\n\nFORM greet USING lv_name TYPE string.\n  DATA(lv_msg) = |Hello, { lv_name }!|.\n  WRITE: lv_msg.\nENDFORM.\n\nFORM add_numbers USING a TYPE i b TYPE i CHANGING result TYPE i.\n  result = a + b.\nENDFORM.\n",
+    "expected_summary": "greet gains a required string input and prints a personalized exclamation greeting using lv_msg; add_numbers is added with two integer inputs and a changing result assigned their sum.",
+    "caveats": [
+      "Signature and printed text change; this is not merely extraction or formatting.",
+      "No callers or ABAP runtime/version validation are provided."
+    ]
+  },
+  {
+    "language": "adf",
+    "filename": "pipeline.json",
+    "name": "Azure Data Factory",
+    "extensions": [
+      ".json"
+    ],
+    "old": "{\n  \"name\": \"CopyPipeline\",\n  \"properties\": {\n    \"activities\": [\n      {\n        \"name\": \"CopyData\",\n        \"type\": \"Copy\",\n        \"inputs\":  [{\"referenceName\": \"Source\", \"type\": \"DatasetReference\"}],\n        \"outputs\": [{\"referenceName\": \"Sink\",   \"type\": \"DatasetReference\"}],\n        \"typeProperties\": {\"source\": {\"type\": \"BlobSource\"}, \"sink\": {\"type\": \"BlobSink\"}}\n      }\n    ]\n  }\n}\n",
+    "new": "{\n  \"name\": \"CopyPipeline\",\n  \"properties\": {\n    \"parameters\": {\n      \"targetFolder\": {\"type\": \"string\", \"defaultValue\": \"output\"}\n    },\n    \"activities\": [\n      {\n        \"name\": \"CopyData\",\n        \"type\": \"Copy\",\n        \"inputs\":  [{\"referenceName\": \"Source\", \"type\": \"DatasetReference\"}],\n        \"outputs\": [{\"referenceName\": \"Sink\",   \"type\": \"DatasetReference\"}],\n        \"typeProperties\": {\"source\": {\"type\": \"BlobSource\"}, \"sink\": {\"type\": \"BlobSink\"}}\n      },\n      {\n        \"name\": \"LogSuccess\",\n        \"type\": \"WebActivity\",\n        \"dependsOn\": [{\"activity\": \"CopyData\", \"dependencyConditions\": [\"Succeeded\"]}],\n        \"typeProperties\": {\"url\": \"https://example.com/log\", \"method\": \"POST\"}\n      }\n    ]\n  }\n}\n",
+    "expected_summary": "Add targetFolder string parameter defaulting to output and a LogSuccess POST WebActivity dependent on CopyData succeeding; preserve existing CopyData inputs, outputs and copy configuration.",
+    "caveats": [
+      "targetFolder is declared but not referenced in the supplied pipeline.",
+      "Deployment validity and the POST endpoint/body/authentication requirements are not established by this snippet."
+    ]
+  },
+  {
+    "language": "asciidoc",
+    "filename": "README.adoc",
+    "name": "AsciiDoc",
+    "extensions": [
+      ".adoc",
+      ".asciidoc",
+      ".asc"
+    ],
+    "old": "= Old\n",
+    "new": "= New\n",
+    "expected_summary": "Change document title from Old to New.",
+    "caveats": [
+      "Tiny title-only fixture provides no coverage of broader AsciiDoc structures."
+    ]
+  },
+  {
+    "language": "asm",
+    "filename": "code.asm",
+    "name": "Assembly",
+    "extensions": [
+      ".asm"
+    ],
+    "old": "section .data\n    msg db \"Hello, World!\", 10\nsection .text\n    global _start\n_start:\n    mov rax, 1\n    mov rdi, 1\n    lea rsi, [msg]\n    mov rdx, 14\n    syscall\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n",
+    "new": "section .data\n    msg db \"Hello, World!\", 10\n    len equ $ - msg\nsection .text\n    global _start\nprint_msg:\n    mov rax, 1\n    mov rdi, 1\n    lea rsi, [msg]\n    mov rdx, len\n    syscall\n    ret\n_start:\n    call print_msg\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n",
+    "expected_summary": "Extract write syscall sequence into print_msg with ret and call it from _start; replace literal byte count 14 with len equ $ - msg; preserve exit syscall and message bytes.",
+    "caveats": [
+      "NASM-style x86-64 Linux syscall source; not dialect-neutral assembly.",
+      "For these exact bytes len is 14, but added call/ret changes stack use and control flow; do not claim universal behavioral equivalence."
+    ]
+  },
+  {
+    "language": "assemblyscript",
+    "filename": "code.as",
+    "name": "AssemblyScript",
+    "extensions": [
+      ".as"
+    ],
+    "old": "export function add(a: i32, b: i32): i32 {\n  return a + b;\n}\n\nexport function square(n: i32): i32 {\n  return n * n;\n}\n",
+    "new": "export function add(a: i32, b: i32): i32 {\n  return a + b;\n}\n\nexport function square(n: i32): i32 {\n  return n ** 2;\n}\n\nexport function cube(n: i32): i32 {\n  return n ** 3;\n}\n",
+    "expected_summary": "Keep add unchanged, change square from n*n to n**2, and add exported cube returning n**3.",
+    "caveats": [
+      "Integer exponentiation versus multiplication equivalence, overflow and compiler support are not independently executed here.",
+      "The .as extension is ambiguous outside explicitly selected AssemblyScript routing."
+    ]
+  },
+  {
+    "language": "astro",
+    "filename": "Page.astro",
+    "name": "Astro",
+    "extensions": [
+      ".astro"
+    ],
+    "old": "---\nconst title = \"My Site\";\n---\n<html>\n  <head><title>{title}</title></head>\n  <body>\n    <h1>Hello World</h1>\n    <p>Welcome to my site.</p>\n  </body>\n</html>\n",
+    "new": "---\nconst title = \"My Site\";\nconst year = new Date().getFullYear();\n---\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>{title}</title>\n  </head>\n  <body>\n    <header><h1>Hello World</h1></header>\n    <main><p>Welcome to my site. &copy; {year}</p></main>\n  </body>\n</html>\n",
+    "expected_summary": "Add current-year computation and copyright/year text; add html lang=en and UTF-8 metadata; wrap heading and paragraph in header/main while retaining title and welcome text.",
+    "caveats": [
+      "Year depends on execution/render timing; markup wrappers and metadata are meaningful changes, not whitespace-only."
+    ]
+  },
+  {
+    "language": "bash",
+    "filename": "code.sh",
+    "name": "Bash",
+    "extensions": [
+      ".sh"
+    ],
+    "old": "#!/bin/bash\nNAME=$1\necho \"Hello, $NAME\"\n",
+    "new": "#!/bin/bash\nset -euo pipefail\n\nNAME=${1:-World}\n\ngreet() {\n    local name=$1\n    echo \"Hello, ${name}!\"\n}\n\ngreet \"$NAME\"\n",
+    "expected_summary": "Enable errexit, nounset and pipefail; default missing or empty first argument to World; introduce greet with local name and invoke it; append ! to greeting.",
+    "caveats": [
+      "Strict-mode behavior and defaulting change semantics; function extraction is only part of the edit."
+    ]
+  },
+  {
+    "language": "c",
+    "filename": "code.c",
+    "name": "C",
+    "extensions": [
+      ".c"
+    ],
+    "old": "#include <stdio.h>\n\nvoid greet(const char *name) {\n    printf(\"Hello, %s\\n\", name);\n}\n\nint main(void) {\n    greet(\"World\");\n    return 0;\n}\n",
+    "new": "#include <stdbool.h>\n#include <stdio.h>\n\nvoid greet(const char *name, bool excited) {\n    printf(\"Hello, %s%s\\n\", name, excited ? \"!\" : \"\");\n}\n\nint main(void) {\n    greet(\"World\", true);\n    return 0;\n}\n",
+    "expected_summary": "Include stdbool.h; add bool excited parameter to greet and conditionally append !; update main to pass true, changing its printed greeting.",
+    "caveats": [
+      "greet's callable signature changes; this is not a behavior-preserving refactor."
+    ]
+  },
+  {
+    "language": "clojure",
+    "filename": "code.clj",
+    "name": "Clojure",
+    "extensions": [
+      ".clj"
+    ],
+    "old": "(defn greet [name]\n  (println (str \"Hello, \" name)))\n\n(defn add [a b]\n  (+ a b))\n",
+    "new": "(defn greet\n  ([name] (greet name \"!\"))\n  ([name suffix]\n   (println (str \"Hello, \" name suffix))))\n\n(defn add [x y] (+ x y))\n\n(defn multiply [x y] (* x y))\n",
+    "expected_summary": "greet gains two arities with a suffix argument and default !; add renames its parameters and compacts formatting; add multiply.",
+    "caveats": [
+      "Single-argument greet now prints extra punctuation; new arity changes API.",
+      "Parameter rename in add preserves its shown computation but does not establish whole-file equivalence."
+    ]
+  },
+  {
+    "language": "cmake",
+    "filename": "CMakeLists.txt",
+    "name": "CMake",
+    "extensions": [
+      "CMakeLists.txt",
+      ".cmake"
+    ],
+    "old": "project(demo)\n\nadd_executable(app main.c)\n\ntarget_link_libraries(app m)\n",
+    "new": "project(demo)\n\nadd_executable(app main.c utils.c)\n\ntarget_link_libraries(app m)\n",
+    "expected_summary": "Add utils.c to the app executable source list; retain project and m library linkage.",
+    "caveats": [
+      "Referenced files and build environment are absent; source-list change affects the build."
+    ]
+  },
+  {
+    "language": "cpp",
+    "filename": "code.cpp",
+    "name": "C++",
+    "extensions": [
+      ".cpp"
+    ],
+    "old": "#include <iostream>\n#include <string>\n\nvoid greet(std::string name) {\n    std::cout << \"Hello, \" + name << std::endl;\n}\n\nint main() {\n    greet(\"World\");\n    return 0;\n}\n",
+    "new": "#include <iostream>\n#include <string>\n#include <vector>\n\nvoid greet(const std::string& name) {\n    std::cout << \"Hello, \" << name << \"!\\n\";\n}\n\nvoid greetMany(const std::vector<std::string>& names) {\n    for (const auto& name : names) greet(name);\n}\n\nint main() {\n    greet(\"World\");\n    return 0;\n}\n",
+    "expected_summary": "Add vector include and greetMany loop; change greet parameter to const reference; append ! and replace endl with newline in output; main remains unchanged.",
+    "caveats": [
+      "Replacing endl removes its explicit flush; punctuation and parameter signature change, so this is not purely performance/style refactoring."
+    ]
+  },
+  {
+    "language": "csharp",
+    "filename": "Code.cs",
+    "name": "C#",
+    "extensions": [
+      ".cs"
+    ],
+    "old": "using System;\n\nclass Greeter {\n    public void Greet(string name) {\n        Console.WriteLine(\"Hello, \" + name);\n    }\n}\n",
+    "new": "using System;\n\nclass Greeter {\n    public void Greet(string name) {\n        Console.WriteLine($\"Hello, {name}!\");\n    }\n\n    public void GreetAll(string[] names) {\n        foreach (var name in names) Greet(name);\n    }\n}\n",
+    "expected_summary": "Change greeting to interpolation with trailing ! and add GreetAll(string[]) that calls Greet for every name.",
+    "caveats": [
+      "Printed output changes even if concatenation/interpolation alone might be equivalent for ordinary strings."
+    ]
+  },
+  {
+    "language": "css",
+    "filename": "style.css",
+    "name": "CSS",
+    "extensions": [
+      ".css"
+    ],
+    "old": ".button {\n  background: blue;\n  color: white;\n  padding: 10px;\n  border: none;\n}\n\n.button:hover {\n  background: darkblue;\n}\n",
+    "new": ".button {\n  background-color: #2563eb;\n  color: #ffffff;\n  padding: 8px 16px;\n  border: none;\n  border-radius: 6px;\n  font-size: 14px;\n  cursor: pointer;\n  transition: background-color 0.2s ease;\n}\n\n.button:hover {\n  background-color: #1d4ed8;\n}\n\n.button:focus {\n  outline: 2px solid #93c5fd;\n  outline-offset: 2px;\n}\n",
+    "expected_summary": "Change normal/hover blue colors and padding; replace background shorthand with background-color; add radius, font size, cursor, transition and focus outline/offset; white becomes equivalent #ffffff.",
+    "caveats": [
+      "New blue hex values are not equivalent to old blue/darkblue.",
+      "Shorthand-to-longhand replacement can change reset/cascade behavior beyond the color itself."
+    ]
+  },
+  {
+    "language": "dart",
+    "filename": "code.dart",
+    "name": "Dart",
+    "extensions": [
+      ".dart"
+    ],
+    "old": "void greet(String name) {\n  print(\"Hello, \" + name);\n}\n\nint add(int a, int b) {\n  return a + b;\n}\n",
+    "new": "void greet(String name) {\n  print(\"Hello, $name!\");\n}\n\nint add(int x, int y) => x + y;\n\nint multiply(int x, int y) => x * y;\n",
+    "expected_summary": "Append ! using interpolation in greet; rename add parameters and convert to expression body; add multiply.",
+    "caveats": [
+      "Greeting changes are functional; shown add arithmetic is retained."
+    ]
+  },
+  {
+    "language": "databricks",
+    "filename": "notebook.py",
+    "name": "Databricks",
+    "extensions": [
+      ".py",
+      ".sql"
+    ],
+    "old": "name: etl_job\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n",
+    "new": "name: etl_job\nparameters:\n  - name: env\n    default: prod\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n  - task_key: transform\n    depends_on:\n      - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/transform\n",
+    "expected_summary": "As workflow YAML, add env parameter default prod and transform notebook task depending on ingest; preserve ingest task and etl_job name.",
+    "caveats": [
+      "Content is YAML workflow configuration, not Python notebook source despite filename notebook.py and language databricks.",
+      "Same source pair appears under databricks-workflow; routing must be investigated before counting this as notebook-language correctness evidence."
+    ]
+  },
+  {
+    "language": "databricks-workflow",
+    "filename": "workflow.yml",
+    "name": "Databricks Workflow",
+    "extensions": [
+      ".yml",
+      ".yaml"
+    ],
+    "old": "name: etl_job\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n",
+    "new": "name: etl_job\nparameters:\n  - name: env\n    default: prod\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n  - task_key: transform\n    depends_on:\n      - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/transform\n",
+    "expected_summary": "Add env parameter default prod and transform task pointing to /notebooks/transform with dependency on ingest; retain existing ingest task and job name.",
+    "caveats": [
+      "env is not consumed by either shown notebook task.",
+      "Actual notebook existence and deployment validity are outside the source fixture."
+    ]
+  },
+  {
+    "language": "dax",
+    "filename": "measure.dax",
+    "name": "DAX",
+    "extensions": [
+      ".dax"
+    ],
+    "old": "DEFINE\nMEASURE Sales[Total Sales] = SUM(Sales[Amount])\nMEASURE Sales[Sales YTD] =\n    TOTALYTD(SUM(Sales[Amount]), Dates[Date])\n\nEVALUATE\nSUMMARIZECOLUMNS(Dates[Year], \"Total\", [Total Sales])\n",
+    "new": "DEFINE\nMEASURE Sales[Total Sales] = SUM(Sales[Amount])\nMEASURE Sales[Sales YTD] =\n    TOTALYTD(SUM(Sales[Amount]), Dates[Date])\nMEASURE Sales[Sales Growth %] =\n    DIVIDE([Total Sales] - CALCULATE([Total Sales], SAMEPERIODLASTYEAR(Dates[Date])),\n           CALCULATE([Total Sales], SAMEPERIODLASTYEAR(Dates[Date])))\n\nEVALUATE\nSUMMARIZECOLUMNS(Dates[Year], \"Total\", [Total Sales], \"Growth\", [Sales Growth %])\n",
+    "expected_summary": "Add Sales Growth % measure dividing current-minus-prior-year sales by prior-year sales; include Growth in SUMMARIZECOLUMNS output; retain Total Sales and Sales YTD measures.",
+    "caveats": [
+      "Requires the referenced Sales/Dates model and relationships; time-intelligence behavior cannot be established from the query alone."
+    ]
+  },
+  {
+    "language": "delphi",
+    "filename": "code.pas",
+    "name": "Delphi",
+    "extensions": [
+      ".pas"
+    ],
+    "old": "program Demo;\n\nprocedure Greet(const Name: string);\nbegin\n  WriteLn('Hello, ' + Name);\nend;\n\nfunction Add(A, B: Integer): Integer;\nbegin\n  Result := A + B;\nend;\n\nbegin\n  Greet('World');\n  WriteLn(Add(2, 3));\nend.\n",
+    "new": "program Demo;\n\nprocedure Greet(const Name: string);\nbegin\n  WriteLn(Format('Hello, %s!', [Name]));\nend;\n\nfunction Add(const A, B: Integer): Integer;\nbegin\n  Result := A + B;\nend;\n\nfunction Multiply(const A, B: Integer): Integer;\nbegin\n  Result := A * B;\nend;\n\nbegin\n  Greet('World');\n  WriteLn(Add(2, 3));\n  WriteLn(Multiply(2, 3));\nend.\n",
+    "expected_summary": "Greet switches to Format and adds !; Add parameters become const; add Multiply with const integer inputs and print Multiply(2,3) in the program body.",
+    "caveats": [
+      "New source calls Format without a uses SysUtils clause; ordinary standalone Delphi compilation needs its declaration/import.",
+      "Additional printed result and greeting punctuation are meaningful; do not classify the whole change as safe refactoring."
+    ]
+  },
+  {
+    "language": "dockerfile",
+    "filename": "Dockerfile",
+    "name": "Dockerfile",
+    "extensions": [
+      "Dockerfile"
+    ],
+    "old": "FROM node:18\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"node\", \"index.js\"]\n",
+    "new": "FROM node:18-alpine AS builder\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --only=production\n\nFROM node:18-alpine\nWORKDIR /app\nCOPY --from=builder /app/node_modules ./node_modules\nCOPY . .\nEXPOSE 3000\nCMD [\"node\", \"index.js\"]\n",
+    "expected_summary": "Replace node:18 single stage with two node:18-alpine stages; install production dependencies with npm ci from package manifests in builder, copy node_modules into final stage, copy source, and add EXPOSE 3000; retain workdir and CMD.",
+    "caveats": [
+      "Base OS and dependency installation semantics change; npm ci requires a compatible lockfile.",
+      "COPY . . can copy local node_modules unless excluded; no .dockerignore is supplied.",
+      "EXPOSE declares metadata and does not itself publish a port."
+    ]
+  },
+  {
+    "language": "elixir",
+    "filename": "code.ex",
+    "name": "Elixir",
+    "extensions": [
+      ".ex"
+    ],
+    "old": "defmodule Greeter do\n  def greet(name) do\n    IO.puts(\"Hello, \" <> name)\n  end\n\n  def add(a, b) do\n    a + b\n  end\nend\n",
+    "new": "defmodule Greeter do\n  def greet(name) do\n    IO.puts(\"Hello, #{name}!\")\n  end\n\n  def add(x, y), do: x + y\n\n  def multiply(x, y), do: x * y\nend\n",
+    "expected_summary": "greet switches from concatenation to interpolation with !; add renames parameters and uses shorthand syntax; add multiply.",
+    "caveats": [
+      "Interpolation and binary concatenation can accept different input types; greet is not necessarily equivalent apart from punctuation."
+    ]
+  },
+  {
+    "language": "generic",
+    "filename": "code.txt",
+    "name": "Generic",
+    "extensions": [
+      ".txt"
+    ],
+    "old": "function processData(input) {\n    result = transform(input)\n    return result\n}\n\nconfig = {\n    timeout: 30,\n    retries: 3\n}\n",
+    "new": "function processData(input, options) {\n    validated = validate(input)\n    result = transform(validated, options)\n    log(\"Processing complete\")\n    return result\n}\n\nconfig = {\n    timeout: 60,\n    retries: 5,\n    verbose: true\n}\n",
+    "expected_summary": "Add options parameter, validate input before transform, pass options to transform and log completion; change timeout 30 to 60 and retries 3 to 5; add verbose=true.",
+    "caveats": [
+      "JavaScript-like pseudocode in .txt; no parser-specific validity or execution semantics should be claimed.",
+      "All listed behavioral-looking changes must remain visible in text review."
+    ]
+  },
+  {
+    "language": "gitignore",
+    "filename": ".gitignore",
+    "name": "Ignore file",
+    "extensions": [
+      ".gitignore",
+      ".dockerignore",
+      ".npmignore",
+      ".eslintignore",
+      ".prettierignore",
+      ".helmignore",
+      ".gcloudignore"
+    ],
+    "old": "# Build output\n/target\nnode_modules/\n\n*.log\n",
+    "new": "# Build output\n/target\nnode_modules/\n\n*.log\n.env\n",
+    "expected_summary": "Add .env ignore pattern; preserve existing target, node_modules and log patterns.",
+    "caveats": [
+      "Ignore rules affect untracked-path matching, not removal of already tracked files; this is not just a comment/style addition."
+    ]
+  },
+  {
+    "language": "go",
+    "filename": "code.go",
+    "name": "GO",
+    "extensions": [
+      ".go"
+    ],
+    "old": "package main\n\nimport \"fmt\"\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc main() {\n\tresult := add(3, 4)\n\tfmt.Println(result)\n}\n",
+    "new": "package main\n\nimport \"fmt\"\n\nfunc add(x, y int) int {\n\treturn x + y\n}\n\nfunc subtract(x, y int) int {\n\treturn x - y\n}\n\nfunc main() {\n\tfmt.Println(add(3, 4))\n\tfmt.Println(subtract(10, 3))\n}\n",
+    "expected_summary": "Rename add parameters without changing its sum; add subtract; inline add call into first Println and add a second Println for subtract(10,3).",
+    "caveats": [
+      "Program adds a second output line; whole-program equivalence is false even though the temporary removal preserves the first result."
+    ]
+  },
+  {
+    "language": "gomod",
+    "filename": "go.mod",
+    "name": "go.mod",
+    "extensions": [
+      "go.mod"
+    ],
+    "old": "module example.com/app\n\ngo 1.22\n\nrequire (\n\tgithub.com/pkg/errors v0.9.1\n)\n",
+    "new": "module example.com/app\n\ngo 1.22\n\nrequire (\n\tgithub.com/pkg/errors v0.9.2\n)\n",
+    "expected_summary": "Update github.com/pkg/errors requirement from v0.9.1 to v0.9.2; retain module path and Go version.",
+    "caveats": [
+      "Syntactically a version change; availability of the requested module version and dependency resolution are unverified."
+    ]
+  },
+  {
+    "language": "graphql",
+    "filename": "schema.graphql",
+    "name": "GraphQL",
+    "extensions": [
+      ".graphql",
+      ".gql"
+    ],
+    "old": "type User {\n  id: ID\n}\n",
+    "new": "type User {\n  id: ID\n  name: String\n}\n",
+    "expected_summary": "Add nullable String field name to User while retaining id: ID.",
+    "caveats": [
+      "Schema fragment has no query root or resolvers; full executable-schema validity is not established."
+    ]
+  },
+  {
+    "language": "groovy",
+    "filename": "code.groovy",
+    "name": "Groovy",
+    "extensions": [
+      ".groovy"
+    ],
+    "old": "def greet(name) {\n    println \"Hello, $name\"\n}\n\ndef add(a, b) {\n    return a + b\n}\n",
+    "new": "def greet(String name) {\n    println \"Hello, ${name}!\"\n}\n\nint add(int x, int y) {\n    return x + y\n}\n\nint multiply(int x, int y) {\n    return x * y\n}\n",
+    "expected_summary": "Constrain greet name to String and append !; change add to int inputs/return and rename parameters; add typed multiply.",
+    "caveats": [
+      "Dynamic-to-int typing restricts accepted inputs and return/coercion behavior; it is not merely parameter renaming."
+    ]
+  },
+  {
+    "language": "haskell",
+    "filename": "code.hs",
+    "name": "Haskell",
+    "extensions": [
+      ".hs"
+    ],
+    "old": "greet :: String -> String\ngreet name = \"Hello, \" ++ name\n\nadd :: Int -> Int -> Int\nadd a b = a + b\n",
+    "new": "greet :: String -> String\ngreet name = \"Hello, \" ++ name ++ \"!\"\n\nadd :: Int -> Int -> Int\nadd x y = x + y\n\nmultiply :: Int -> Int -> Int\nmultiply x y = x * y\n",
+    "expected_summary": "Append ! to greet result; rename add parameters with the same Int sum; add multiply signature and implementation.",
+    "caveats": [
+      "Library-style fragment has no main; do not require executable completeness to judge the source edits."
+    ]
+  },
+  {
+    "language": "hcl",
+    "filename": "main.tf",
+    "name": "Terraform/HCL",
+    "extensions": [
+      ".tf",
+      ".hcl"
+    ],
+    "old": "resource \"aws_instance\" \"web\" {\n  ami           = \"ami-0c55b159cbfafe1f0\"\n  instance_type = \"t2.micro\"\n}\n",
+    "new": "resource \"aws_instance\" \"web\" {\n  ami           = \"ami-0c55b159cbfafe1f0\"\n  instance_type = \"t3.small\"\n\n  tags = {\n    Name        = \"web-server\"\n    Environment = \"production\"\n  }\n}\n\noutput \"instance_ip\" {\n  value = aws_instance.web.public_ip\n}\n",
+    "expected_summary": "Change aws_instance.web type from t2.micro to t3.small; add Name and Environment tags; add instance_ip output referencing public_ip; preserve AMI and resource identity.",
+    "caveats": [
+      "Infrastructure behavior/cost and exported value change; deployment/provider/AMI validity is not verified."
+    ]
+  },
+  {
+    "language": "html",
+    "filename": "index.html",
+    "name": "Html",
+    "extensions": [
+      ".html",
+      ".htm"
+    ],
+    "old": "<!DOCTYPE html>\n<html>\n<head>\n  <title>My Page</title>\n</head>\n<body>\n  <h1>Hello World</h1>\n  <p>Welcome to my site.</p>\n</body>\n</html>\n",
+    "new": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>My Page</title>\n</head>\n<body>\n  <header>\n    <h1>Hello World</h1>\n  </header>\n  <main>\n    <p>Welcome to my site.</p>\n  </main>\n</body>\n</html>\n",
+    "expected_summary": "Add html lang=en, charset and viewport metadata; wrap existing heading in header and paragraph in main; retain title and visible text.",
+    "caveats": [
+      "Structural/accessibility and viewport changes are meaningful even though visible text is unchanged."
+    ]
+  },
+  {
+    "language": "ini",
+    "filename": "settings.ini",
+    "name": "INI",
+    "extensions": [
+      ".ini",
+      ".cfg",
+      ".conf",
+      ".editorconfig",
+      ".gitconfig"
+    ],
+    "old": "[server]\nhost = 0.0.0.0\nport = 8080\n",
+    "new": "[server]\nhost = 0.0.0.0\nport = 9090\nworkers = 4\n",
+    "expected_summary": "Change server port from 8080 to 9090 and add workers=4; preserve host and section.",
+    "caveats": [
+      "Value types and application interpretation depend on the INI consumer."
+    ]
+  },
+  {
+    "language": "java",
+    "filename": "Code.java",
+    "name": "Java",
+    "extensions": [
+      ".java"
+    ],
+    "old": "public class Calculator {\n    public int add(int a, int b) {\n        return a + b;\n    }\n\n    public int multiply(int a, int b) {\n        return a * b;\n    }\n}\n",
+    "new": "public class Calculator {\n    public int add(int first, int second) {\n        return first + second;\n    }\n\n    public int multiply(int first, int second) {\n        return first * second;\n    }\n\n    public double divide(int dividend, int divisor) {\n        if (divisor == 0) throw new ArithmeticException(\"Division by zero\");\n        return (double) dividend / divisor;\n    }\n}\n",
+    "expected_summary": "Rename add/multiply parameters while preserving arithmetic; add double-returning divide with explicit zero-divisor ArithmeticException and a cast enabling noninteger division.",
+    "caveats": [
+      "Filename Code.java does not match public class Calculator; standalone javac compilation normally requires Calculator.java.",
+      "Parameter names may be observable through metadata, but new divide API is the main functional addition."
+    ]
+  },
+  {
+    "language": "javascript",
+    "filename": "code.js",
+    "name": "Javascript",
+    "extensions": [
+      ".js",
+      ".mjs",
+      ".cjs",
+      ".jsx"
+    ],
+    "old": "var PI = 3.14159;\n\nfunction circleArea(radius) {\n  return PI * radius * radius;\n}\n\nfunction greet(name) {\n  return \"Hello, \" + name + \"!\";\n}\n\nmodule.exports = { circleArea, greet };\n",
+    "new": "const PI = 3.14159;\n\nconst circleArea = (radius) => PI * radius ** 2;\n\nconst greet = (name) => `Hello, ${name}!`;\n\nmodule.exports = { circleArea, greet };\n",
+    "expected_summary": "Change PI from var to const; replace circleArea and greet declarations with const arrow functions; reassociate area arithmetic to PI*(radius**2) and use template interpolation for greeting; preserve export names.",
+    "caveats": [
+      "Do not label all edits safe: arithmetic reassociation can change floating-point results.",
+      "Arrow functions differ in constructibility/prototype and binding/hoisting behavior; const changes reassignment and initialization semantics.",
+      "String concatenation versus template interpolation can differ for unusual coercion inputs."
+    ]
+  },
+  {
+    "language": "json",
+    "filename": "data.json",
+    "name": "Json",
+    "extensions": [
+      ".json"
+    ],
+    "old": "{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\"\n}\n",
+    "new": "{\n  \"name\": \"my-app\",\n  \"version\": \"2.0.0\",\n  \"main\": \"dist/index.js\",\n  \"scripts\": {\n    \"build\": \"tsc\",\n    \"start\": \"node dist/index.js\"\n  },\n  \"engines\": {\n    \"node\": \">=18\"\n  }\n}\n",
+    "expected_summary": "Change version 1.0.0 to 2.0.0 and main index.js to dist/index.js; add build/start scripts and engines.node >=18; preserve name.",
+    "caveats": [
+      "Package-like JSON is named data.json; syntactic JSON correctness does not establish package-manager behavior or existence of build files."
+    ]
+  },
+  {
+    "language": "kotlin",
+    "filename": "Code.kt",
+    "name": "Kotlin",
+    "extensions": [
+      ".kt"
+    ],
+    "old": "fun greet(name: String) {\n    println(\"Hello, \" + name)\n}\n\nfun add(a: Int, b: Int): Int {\n    return a + b\n}\n",
+    "new": "fun greet(name: String) {\n    println(\"Hello, $name!\")\n}\n\nfun add(x: Int, y: Int): Int = x + y\n\nfun multiply(x: Int, y: Int): Int = x * y\n",
+    "expected_summary": "Append ! via interpolation in greet; rename add parameters and use expression body; add multiply.",
+    "caveats": [
+      "Renaming public parameters a/b to x/y can break named-argument call sites; this is not unconditionally a safe rename."
+    ]
+  },
+  {
+    "language": "latex",
+    "filename": "paper.tex",
+    "name": "LaTeX",
+    "extensions": [
+      ".tex",
+      ".ltx"
+    ],
+    "old": "\\section{Old}\n",
+    "new": "\\section{New}\n",
+    "expected_summary": "Change section title Old to New.",
+    "caveats": [
+      "Fragment lacks document preamble/environment; not a standalone compilable LaTeX document."
+    ]
+  },
+  {
+    "language": "lua",
+    "filename": "code.lua",
+    "name": "LUA",
+    "extensions": [
+      ".lua"
+    ],
+    "old": "function greet(name)\n    print(\"Hello, \" .. name)\nend\n\nfunction add(a, b)\n    return a + b\nend\n",
+    "new": "local function greet(name)\n    print(string.format(\"Hello, %s!\", name))\nend\n\nlocal function add(x, y)\n    return x + y\nend\n\nlocal function multiply(x, y)\n    return x * y\nend\n",
+    "expected_summary": "Change greet and add from global to local functions; greeting uses string.format and adds !; rename add inputs; add local multiply.",
+    "caveats": [
+      "Global-to-local scope removes the previous global API; with no exports/calls the new helpers are inaccessible outside this chunk.",
+      "Formatting versus concatenation can differ in accepted/coerced argument types; not a safe style-only rewrite."
+    ]
+  },
+  {
+    "language": "m",
+    "filename": "query.m",
+    "name": "Power Query M",
+    "extensions": [
+      ".m"
+    ],
+    "old": "let\n    Source = Sql.Database(\"server\", \"sales\"),\n    FilteredRows = Table.SelectRows(Source, each [Amount] > 0)\nin\n    FilteredRows\n",
+    "new": "let\n    Source = Sql.Database(\"server\", \"sales\"),\n    FilteredRows = Table.SelectRows(Source, each [Amount] > 100),\n    RenamedColumns = Table.RenameColumns(FilteredRows, {{\"Amount\", \"OrderAmount\"}})\nin\n    RenamedColumns\n",
+    "expected_summary": "Raise Amount filter threshold from >0 to >100; rename Amount column to OrderAmount; return RenamedColumns instead of FilteredRows.",
+    "caveats": [
+      "Sql.Database normally provides a navigation table unless a query/table-navigation step is supplied; direct access to an Amount column needs investigation.",
+      "External SQL source/schema is absent; query executability is not established."
+    ]
+  },
+  {
+    "language": "make",
+    "filename": "Makefile",
+    "name": "Makefile",
+    "extensions": [
+      "Makefile",
+      "GNUmakefile",
+      ".mk",
+      ".make"
+    ],
+    "old": "CC = gcc\n\nbuild: main.c\n\t$(CC) -O2 -o app main.c\n",
+    "new": "CC = gcc\n\nbuild: main.c\n\t$(CC) -O3 -o app main.c\n\nclean:\n\trm -f app\n",
+    "expected_summary": "Change compiler optimization from -O2 to -O3 in build recipe; add clean target removing app.",
+    "caveats": [
+      "clean is not declared .PHONY, so an existing file named clean can suppress that recipe."
+    ]
+  },
+  {
+    "language": "markdown",
+    "filename": "README.md",
+    "name": "Markdown",
+    "extensions": [
+      ".md",
+      ".markdown",
+      ".mdown",
+      ".mkd",
+      ".mkdn"
+    ],
+    "old": "# Title\n\nIntro paragraph.\n\n## Usage\n\nRun the tool.\n",
+    "new": "# Title\n\nIntro paragraph.\n\n## Usage\n\nRun the tool with flags.\n\n## License\n\nMIT.\n",
+    "expected_summary": "Change Usage instruction to run with flags; append License heading and MIT text.",
+    "caveats": []
+  },
+  {
+    "language": "mdx",
+    "filename": "doc.mdx",
+    "name": "MDX",
+    "extensions": [
+      ".mdx"
+    ],
+    "old": "# Getting Started\n\nWelcome to the docs.\n\n## Installation\n\nRun `npm install` to get started.\n",
+    "new": "import { Callout } from './components'\n\n# Getting Started\n\nWelcome to the docs. This guide helps you get up and running.\n\n<Callout type=\"info\">\n  Make sure you have Node.js 18+ installed.\n</Callout>\n\n## Installation\n\n```bash\nnpm install my-package\n```\n",
+    "expected_summary": "Import Callout; expand welcome paragraph; add informational Callout requiring Node.js 18+; replace inline npm install instruction with bash code block installing my-package.",
+    "caveats": [
+      "Rendering depends on the external ./components Callout export, which is not provided."
+    ]
+  },
+  {
+    "language": "ocaml",
+    "filename": "main.ml",
+    "name": "OCaml",
+    "extensions": [
+      ".ml",
+      ".mli"
+    ],
+    "old": "let answer = 41\n",
+    "new": "let answer = 42\n",
+    "expected_summary": "Change answer integer binding from 41 to 42.",
+    "caveats": []
+  },
+  {
+    "language": "odin",
+    "filename": "code.odin",
+    "name": "Odin",
+    "extensions": [
+      ".odin"
+    ],
+    "old": "package main\n\nimport \"core:fmt\"\n\ngreet :: proc(name: string) {\n    fmt.printf(\"Hello, %s\\n\", name)\n}\n\nadd :: proc(a, b: int) -> int {\n    return a + b\n}\n\nmain :: proc() {\n    greet(\"World\")\n    fmt.println(add(3, 4))\n}\n",
+    "new": "package main\n\nimport \"core:fmt\"\n\ngreet :: proc(name: string) {\n    fmt.printf(\"Hello, %s!\\n\", name)\n}\n\nadd :: proc(a, b: int) -> int { return a + b }\n\nmultiply :: proc(a, b: int) -> int { return a * b }\n\nmain :: proc() {\n    greet(\"World\")\n    fmt.println(\"add:\", add(3, 4))\n    fmt.println(\"mul:\", multiply(3, 4))\n}\n",
+    "expected_summary": "Add exclamation mark to greeting; add multiply procedure; label addition output and print multiplication result. Reformat add into a single line without changing its arithmetic.",
+    "caveats": []
+  },
+  {
+    "language": "perl",
+    "filename": "code.pl",
+    "name": "Perl",
+    "extensions": [
+      ".pl"
+    ],
+    "old": "sub greet {\n    my $name = shift;\n    print \"Hello, $name\\n\";\n}\n\nsub add {\n    my ($a, $b) = @_;\n    return $a + $b;\n}\n",
+    "new": "use strict;\nuse warnings;\n\nsub greet {\n    my ($name) = @_;\n    print \"Hello, ${name}!\\n\";\n}\n\nsub add {\n    my ($x, $y) = @_;\n    return $x + $y;\n}\n",
+    "expected_summary": "Enable strict and warnings; replace shift-based name extraction with list assignment from @_; add greeting exclamation mark; rename add locals a/b to x/y with unchanged addition.",
+    "caveats": [
+      "shift consumes the first element of @_ whereas list assignment leaves @_ intact; this does not affect the remaining shown function body."
+    ]
+  },
+  {
+    "language": "php",
+    "filename": "code.php",
+    "name": "PHP",
+    "extensions": [
+      ".php"
+    ],
+    "old": "<?php\nfunction greet($name) {\n    echo \"Hello, \" . $name . \"!\\n\";\n}\n\nfunction add($a, $b) {\n    return $a + $b;\n}\n",
+    "new": "<?php\nfunction greet(string $name): void {\n    echo \"Hello, {$name}!\\n\";\n}\n\nfunction add(int $a, int $b): int {\n    return $a + $b;\n}\n\nfunction multiply(int $a, int $b): int {\n    return $a * $b;\n}\n",
+    "expected_summary": "Add string/void annotations to greet and int parameter/return annotations to add; rewrite greeting concatenation as interpolation with the same displayed string; add typed multiply function.",
+    "caveats": [
+      "Type declarations constrain/coerce accepted values and return values; greeting rewrite alone preserves output for string inputs."
+    ]
+  },
+  {
+    "language": "plsql",
+    "filename": "code.sql",
+    "name": "PL/SQL",
+    "extensions": [
+      ".sql"
+    ],
+    "old": "CREATE OR REPLACE PROCEDURE greet(p_name IN VARCHAR2) IS\nBEGIN\n  DBMS_OUTPUT.PUT_LINE('Hello, ' || p_name);\nEND greet;\n/\n\nCREATE OR REPLACE FUNCTION add_nums(p_a IN NUMBER, p_b IN NUMBER)\n  RETURN NUMBER IS\nBEGIN\n  RETURN p_a + p_b;\nEND add_nums;\n/\n",
+    "new": "CREATE OR REPLACE PROCEDURE greet(p_name IN VARCHAR2) IS\n  v_msg VARCHAR2(100);\nBEGIN\n  v_msg := 'Hello, ' || p_name || '!';\n  DBMS_OUTPUT.PUT_LINE(v_msg);\nEND greet;\n/\n\nCREATE OR REPLACE FUNCTION add_nums(p_a IN NUMBER, p_b IN NUMBER)\n  RETURN NUMBER IS\nBEGIN\n  RETURN p_a + p_b;\nEND add_nums;\n/\n\nCREATE OR REPLACE FUNCTION multiply_nums(p_a IN NUMBER, p_b IN NUMBER)\n  RETURN NUMBER IS\nBEGIN\n  RETURN p_a * p_b;\nEND multiply_nums;\n/\n",
+    "expected_summary": "Declare VARCHAR2(100) v_msg in greet, build greeting with appended exclamation mark and print v_msg; add multiply_nums function; leave add_nums unchanged.",
+    "caveats": [
+      "New 100-character local imposes a length bound on greeting construction.",
+      "Generic code.sql filename does not independently identify PL/SQL rather than another SQL dialect."
+    ]
+  },
+  {
+    "language": "po",
+    "filename": "messages.po",
+    "name": "PO/gettext",
+    "extensions": [
+      ".po",
+      ".pot"
+    ],
+    "old": "msgid \"hello\"\nmsgstr \"Hello\"\n",
+    "new": "msgid \"hello\"\nmsgstr \"Hi\"\n",
+    "expected_summary": "Change translation of msgid hello from Hello to Hi.",
+    "caveats": [
+      "This is a minimal catalog fragment with no gettext metadata header."
+    ]
+  },
+  {
+    "language": "postscript",
+    "filename": "code.ps",
+    "name": "Postscript",
+    "extensions": [
+      ".ps"
+    ],
+    "old": "%!PS\n/Helvetica findfont 12 scalefont setfont\n72 720 moveto\n(Hello, World!) show\nshowpage\n",
+    "new": "%!PS\n/Helvetica findfont 14 scalefont setfont\n/greet {\n    moveto\n    show\n} def\n72 720 (Hello, World!) greet\n72 700 (Goodbye, World!) greet\nshowpage\n",
+    "expected_summary": "Increase Helvetica font size from 12 to 14; introduce greet procedure wrapping moveto and show; replace direct greeting display with two greet invocations intended to display Hello and Goodbye at different positions.",
+    "caveats": [
+      "New calls push x y string, but greet executes moveto first while the string is on top of the operand stack. The new program appears to raise a typecheck error before rendering either greeting; this is not a valid successful greeting refactor."
+    ]
+  },
+  {
+    "language": "powershell",
+    "filename": "code.ps1",
+    "name": "Powershell",
+    "extensions": [
+      ".ps1"
+    ],
+    "old": "function Greet($Name) {\n    Write-Host \"Hello, $Name\"\n}\n\nfunction Add-Numbers($A, $B) {\n    return $A + $B\n}\n",
+    "new": "function Greet {\n    param(\n        [string]$Name = 'World'\n    )\n    Write-Host \"Hello, $Name!\"\n}\n\nfunction Add-Numbers {\n    param(\n        [int]$A,\n        [int]$B\n    )\n    return $A + $B\n}\n\nfunction Multiply-Numbers {\n    param(\n        [int]$A,\n        [int]$B\n    )\n    return $A * $B\n}\n",
+    "expected_summary": "Replace inline parameters with param blocks; type Greet name as string and default it to World; append greeting exclamation mark; type Add-Numbers parameters as int; add typed Multiply-Numbers.",
+    "caveats": [
+      "Integer parameter conversion changes accepted inputs and arithmetic behavior compared with untyped parameters."
+    ]
+  },
+  {
+    "language": "proto",
+    "filename": "service.proto",
+    "name": "Protocol Buffers",
+    "extensions": [
+      ".proto"
+    ],
+    "old": "syntax = \"proto3\";\n\nmessage User {\n  string name = 1;\n  int32 login_count = 2;\n}\n",
+    "new": "syntax = \"proto3\";\n\nmessage User {\n  string name = 1;\n  int64 login_count = 2;\n  bool active = 3;\n}\n",
+    "expected_summary": "Change User.login_count field 2 from int32 to int64; add bool active field 3; preserve name field 1.",
+    "caveats": [
+      "Widened field type changes generated APIs and value range; compatibility must not be inferred solely from preserved field number."
+    ]
+  },
+  {
+    "language": "puppet",
+    "filename": "site.pp",
+    "name": "Puppet",
+    "extensions": [
+      ".pp"
+    ],
+    "old": "class greeting {\n  notify { 'hello':\n    message => 'Hello, World!',\n  }\n}\n",
+    "new": "class greeting (\n  String $message = 'Hello, World!',\n  String $target   = 'console',\n) {\n  notify { 'hello':\n    message => $message,\n  }\n\n  file { '/tmp/greeting.txt':\n    ensure  => present,\n    content => $message,\n  }\n}\n",
+    "expected_summary": "Parameterize greeting class with message and target strings; use message parameter in notify; add /tmp/greeting.txt file resource with message content.",
+    "caveats": [
+      "New target parameter is unused; it does not select a destination.",
+      "Class declaration alone does not instantiate its resources."
+    ]
+  },
+  {
+    "language": "python",
+    "filename": "code.py",
+    "name": "Python",
+    "extensions": [
+      ".py",
+      ".pyi"
+    ],
+    "old": "def greet(name):\n    print(\"Hello, \" + name)\n\ndef add(a, b):\n    return a + b\n\nclass Counter:\n    def __init__(self):\n        self.count = 0\n\n    def increment(self):\n        self.count += 1\n",
+    "new": "def greet(name: str) -> None:\n    print(f\"Hello, {name}\")\n\ndef add(x: int, y: int) -> int:\n    return x + y\n\nclass Counter:\n    def __init__(self) -> None:\n        self.count: int = 0\n\n    def increment(self) -> None:\n        self.count += 1\n",
+    "expected_summary": "Add parameter, return, and count annotations; rewrite greet concatenation as f-string; rename add parameters a/b to x/y and update references; preserve Counter increment arithmetic.",
+    "caveats": [
+      "Parameter renaming changes keyword-call compatibility (add(a=..., b=...) no longer matches).",
+      "F-string formatting accepts some non-string inputs that old string concatenation rejected; annotations do not enforce runtime types."
+    ]
+  },
+  {
+    "language": "qsharp",
+    "filename": "Program.qs",
+    "name": "Q#",
+    "extensions": [
+      ".qs"
+    ],
+    "old": "namespace Demo {\n    open Microsoft.Quantum.Intrinsic;\n\n    operation SayHello() : Unit {\n        Message(\"Hello, World!\");\n    }\n}\n",
+    "new": "namespace Demo {\n    open Microsoft.Quantum.Intrinsic;\n    open Microsoft.Quantum.Canon;\n\n    operation SayHello(name : String) : Unit {\n        Message($\"Hello, {name}!\");\n    }\n\n    operation FlipBit() : Result {\n        use q = Qubit();\n        X(q);\n        let result = M(q);\n        Reset(q);\n        return result;\n    }\n}\n",
+    "expected_summary": "Add Canon namespace import; change SayHello from zero arguments to a String name parameter and interpolated greeting; add FlipBit allocating a qubit, applying X, measuring, resetting, and returning result.",
+    "caveats": [
+      "Q# namespace and library compatibility depends on SDK generation; no Q# compiler validation was performed."
+    ]
+  },
+  {
+    "language": "r",
+    "filename": "code.r",
+    "name": "R",
+    "extensions": [
+      ".r"
+    ],
+    "old": "greet <- function(name) {\n  cat(\"Hello, \", name, \"\\n\")\n}\n\nadd <- function(a, b) {\n  a + b\n}\n",
+    "new": "greet <- function(name) {\n  cat(paste0(\"Hello, \", name, \"!\\n\"))\n}\n\nadd <- function(x, y) x + y\n\nmultiply <- function(x, y) x * y\n",
+    "expected_summary": "Rewrite greeting using paste0 and add exclamation mark; rename add formals a/b to x/y and shorten its body; add multiply.",
+    "caveats": [
+      "Old cat uses its default separator between arguments, so paste0 also changes spacing.",
+      "Renaming formals changes named-argument compatibility."
+    ]
+  },
+  {
+    "language": "reasonml",
+    "filename": "component.re",
+    "name": "ReasonML",
+    "extensions": [
+      ".re",
+      ".rei"
+    ],
+    "old": "let title = \"old\";\n",
+    "new": "let title = \"new\";\n",
+    "expected_summary": "Change title string binding from old to new.",
+    "caveats": []
+  },
+  {
+    "language": "ruby",
+    "filename": "code.rb",
+    "name": "Ruby",
+    "extensions": [
+      ".rb"
+    ],
+    "old": "def greet(name)\n  puts \"Hello, \" + name\nend\n\ndef add(a, b)\n  a + b\nend\n",
+    "new": "def greet(name)\n  puts \"Hello, #{name}!\"\nend\n\ndef add(x, y)\n  x + y\nend\n\ndef multiply(x, y)\n  x * y\nend\n",
+    "expected_summary": "Change greeting concatenation to interpolation and append exclamation mark; rename add locals a/b to x/y; add multiply method.",
+    "caveats": [
+      "Interpolation can stringify values that old string concatenation would reject."
+    ]
+  },
+  {
+    "language": "rust",
+    "filename": "code.rs",
+    "name": "Rust",
+    "extensions": [
+      ".rs"
+    ],
+    "old": "fn square(n: i32) -> i32 {\n    n * n\n}\n\nfn main() {\n    println!(\"{}\", square(5));\n}\n",
+    "new": "fn square(n: i32) -> i32 {\n    n.pow(2)\n}\n\nfn cube(n: i32) -> i32 {\n    n.pow(3)\n}\n\nfn main() {\n    println!(\"square: {}\", square(5));\n    println!(\"cube:   {}\", cube(3));\n}\n",
+    "expected_summary": "Rewrite square calculation as n.pow(2); add cube using n.pow(3); label square output and print cube(3).",
+    "caveats": [
+      "For the shown inputs, square remains 25 and new cube output is 27; this example does not establish arbitrary overflow-mode equivalence."
+    ]
+  },
+  {
+    "language": "sas",
+    "filename": "code.sas",
+    "name": "SAS",
+    "extensions": [
+      ".sas"
+    ],
+    "old": "data work.greeting;\n  name = \"World\";\n  message = cats(\"Hello, \", name);\n  put message;\nrun;\n",
+    "new": "%let target = World;\n\ndata work.greeting;\n  name    = \"&target\";\n  suffix  = \"!\";\n  message = cats(\"Hello, \", name, suffix);\n  length  = lengthn(message);\n  put message= length=;\nrun;\n\nproc print data=work.greeting; run;\n",
+    "expected_summary": "Introduce target macro variable and resolve it into name; add suffix, append it to message, compute lengthn(message), log named message/length values, and print work.greeting dataset.",
+    "caveats": [
+      "CATS strips leading/trailing blanks from each argument, including the space in Hello, ; do not claim the generated greeting contains a space after the comma."
+    ]
+  },
+  {
+    "language": "scala",
+    "filename": "Code.scala",
+    "name": "Scala",
+    "extensions": [
+      ".scala"
+    ],
+    "old": "object Main {\n  def greet(name: String): Unit = {\n    println(\"Hello, \" + name)\n  }\n\n  def add(a: Int, b: Int): Int = a + b\n}\n",
+    "new": "object Main {\n  def greet(name: String): Unit = {\n    println(s\"Hello, $name!\")\n  }\n\n  def add(x: Int, y: Int): Int = x + y\n\n  def multiply(x: Int, y: Int): Int = x * y\n}\n",
+    "expected_summary": "Rewrite greeting using interpolation and append exclamation mark; rename add parameters a/b to x/y; add multiply.",
+    "caveats": [
+      "Parameter renaming can break callers using named arguments."
+    ]
+  },
+  {
+    "language": "scss",
+    "filename": "style.scss",
+    "name": "Scss",
+    "extensions": [
+      ".scss"
+    ],
+    "old": "$primary: blue;\n\n.button {\n  background: $primary;\n  color: white;\n  padding: 10px;\n}\n",
+    "new": "$primary:     #2563eb;\n$primary-dark: #1d4ed8;\n$white:        #ffffff;\n\n@mixin button-base {\n  border: none;\n  border-radius: 6px;\n  cursor: pointer;\n  transition: background-color 0.2s ease;\n}\n\n.button {\n  @include button-base;\n  background-color: $primary;\n  color: $white;\n  padding: 8px 16px;\n\n  &:hover { background-color: $primary-dark; }\n  &:focus { outline: 2px solid #93c5fd; }\n}\n",
+    "expected_summary": "Change primary blue to #2563eb; add dark-primary and white variables; introduce button-base mixin adding border, radius, cursor, and transition; include mixin; use background-color, change padding to 8px 16px, and add hover/focus rules.",
+    "caveats": [
+      "Replacing background shorthand with background-color can change whether other background properties are reset."
+    ]
+  },
+  {
+    "language": "sql",
+    "filename": "code.sql",
+    "name": "SQL",
+    "extensions": [
+      ".sql",
+      ".ddl",
+      ".dml"
+    ],
+    "old": "SELECT id, name, email\nFROM users\nWHERE active = 1;\n",
+    "new": "SELECT\n    u.id,\n    u.name,\n    u.email,\n    o.total AS order_total\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.active = 1\nORDER BY u.name;\n",
+    "expected_summary": "Alias users as u; LEFT JOIN orders by user_id; add order total projection; qualify existing columns/filter; order results by user name.",
+    "caveats": [
+      "A user can now produce multiple result rows when multiple orders match; unmatched users remain with null order_total."
+    ]
+  },
+  {
+    "language": "squirrel",
+    "filename": "code.nut",
+    "name": "Squirrel",
+    "extensions": [
+      ".nut"
+    ],
+    "old": "function greet(name) {\n    print(\"Hello, \" + name + \"\\n\");\n}\n\nfunction add(a, b) {\n    return a + b;\n}\n",
+    "new": "function greet(name) {\n    print(format(\"Hello, %s!\\n\", name));\n}\n\nfunction add(x, y) {\n    return x + y;\n}\n\nfunction multiply(x, y) {\n    return x * y;\n}\n",
+    "expected_summary": "Replace greeting concatenation with format call and append exclamation mark; rename add parameters a/b to x/y; add multiply.",
+    "caveats": [
+      "The format %s call introduces a formatting/type contract; do not assume equivalence for all non-string inputs."
+    ]
+  },
+  {
+    "language": "svelte",
+    "filename": "Component.svelte",
+    "name": "Svelte",
+    "extensions": [
+      ".svelte"
+    ],
+    "old": "<script>\n  let name = 'World';\n</script>\n\n<h1>Hello, {name}!</h1>\n",
+    "new": "<script>\n  let name = 'World';\n  let count = 0;\n\n  function increment() {\n    count += 1;\n  }\n</script>\n\n<h1>Hello, {name}!</h1>\n<p>Count: {count}</p>\n<button on:click={increment}>Increment</button>\n",
+    "expected_summary": "Add count state initialized to zero, increment function, displayed count paragraph, and click-bound Increment button; preserve greeting.",
+    "caveats": [
+      "Uses legacy on:click syntax and let-based reactivity; coverage depends on supported Svelte mode/version."
+    ]
+  },
+  {
+    "language": "swift",
+    "filename": "code.swift",
+    "name": "Swift",
+    "extensions": [
+      ".swift"
+    ],
+    "old": "import Foundation\n\nfunc greet(name: String) {\n    print(\"Hello, \" + name)\n}\n\nfunc add(a: Int, b: Int) -> Int {\n    return a + b\n}\n",
+    "new": "import Foundation\n\nfunc greet(name: String) {\n    print(\"Hello, \\(name)!\")\n}\n\nfunc add(_ a: Int, _ b: Int) -> Int {\n    return a + b\n}\n\nfunc multiply(_ a: Int, _ b: Int) -> Int {\n    return a * b\n}\n",
+    "expected_summary": "Rewrite greeting with interpolation and append exclamation mark; remove external argument labels from add via underscores; add unlabeled multiply.",
+    "caveats": [
+      "Call syntax changes from add(a:b:) to add(_:_:); this is an API change, not just a local rename."
+    ]
+  },
+  {
+    "language": "toml",
+    "filename": "config.toml",
+    "name": "TOML",
+    "extensions": [
+      ".toml"
+    ],
+    "old": "title = \"demo\"\n\n[server]\nhost = \"0.0.0.0\"\nport = 8080\n",
+    "new": "title = \"demo\"\n\n[server]\nhost = \"0.0.0.0\"\nport = 9090\nworkers = 4\n",
+    "expected_summary": "Change server.port from 8080 to 9090; add server.workers = 4.",
+    "caveats": []
+  },
+  {
+    "language": "tsql",
+    "filename": "code.sql",
+    "name": "T-SQL",
+    "extensions": [
+      ".tsql"
+    ],
+    "old": "SELECT id, name, email\nFROM users\nWHERE active = 1;\n",
+    "new": "SELECT\n    u.id,\n    u.name,\n    u.email,\n    COUNT(o.id) AS order_count\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.active = 1\nGROUP BY u.id, u.name, u.email\nORDER BY order_count DESC;\n",
+    "expected_summary": "Alias users, LEFT JOIN orders, add COUNT(o.id) order_count, group by user columns, and order descending by order_count; preserve active-user filter.",
+    "caveats": [
+      "Filename code.sql differs from advertised .tsql extension and the query uses broadly shared SQL syntax, so filename-based T-SQL selection is not demonstrated."
+    ]
+  },
+  {
+    "language": "tsx",
+    "filename": "component.tsx",
+    "name": "TSX",
+    "extensions": [
+      ".tsx"
+    ],
+    "old": "function getUser(id) {\n  return { id: id, name: \"Alice\" };\n}\n\nfunction formatName(user) {\n  return user.name.toUpperCase();\n}\n",
+    "new": "interface User {\n  id: number;\n  name: string;\n}\n\nfunction getUser(id: number): User {\n  return { id, name: \"Alice\" };\n}\n\nfunction formatName(user: User): string {\n  return user.name.toUpperCase();\n}\n",
+    "expected_summary": "Add User interface with numeric id and string name; annotate getUser parameter/return and formatName parameter/return; replace id: id with equivalent object shorthand.",
+    "caveats": [
+      "Contains no JSX: this case exercises TypeScript syntax in a .tsx file but cannot establish JSX/TSX-specific correctness.",
+      "Old unannotated parameters can fail noImplicitAny; compiler configuration is absent."
+    ]
+  },
+  {
+    "language": "typescript",
+    "filename": "code.ts",
+    "name": "Typescript",
+    "extensions": [
+      ".ts",
+      ".mts",
+      ".cts"
+    ],
+    "old": "function getUser(id) {\n  return { id: id, name: \"Alice\" };\n}\n\nfunction formatName(user) {\n  return user.name.toUpperCase();\n}\n",
+    "new": "interface User {\n  id: number;\n  name: string;\n}\n\nfunction getUser(id: number): User {\n  return { id, name: \"Alice\" };\n}\n\nfunction formatName(user: User): string {\n  return user.name.toUpperCase();\n}\n",
+    "expected_summary": "Add User interface with numeric id and string name; annotate getUser parameter/return and formatName parameter/return; replace id: id with equivalent object shorthand.",
+    "caveats": [
+      "For accepted inputs, annotations/interface add static contracts without changing emitted calculation; old unannotated parameters can fail noImplicitAny."
+    ]
+  },
+  {
+    "language": "vbnet",
+    "filename": "Code.vb",
+    "name": "VB.NET",
+    "extensions": [
+      ".vb"
+    ],
+    "old": "Module HelloWorld\n    Sub Greet(name As String)\n        Console.WriteLine(\"Hello, \" & name)\n    End Sub\n\n    Function Add(a As Integer, b As Integer) As Integer\n        Return a + b\n    End Function\nEnd Module\n",
+    "new": "Module HelloWorld\n    Sub Greet(name As String)\n        Console.WriteLine($\"Hello, {name}!\")\n    End Sub\n\n    Function Add(a As Integer, b As Integer) As Integer\n        Return a + b\n    End Function\n\n    Function Multiply(a As Integer, b As Integer) As Integer\n        Return a * b\n    End Function\nEnd Module\n",
+    "expected_summary": "Rewrite greeting using string interpolation and append exclamation mark; add integer Multiply function; leave Add unchanged.",
+    "caveats": [
+      "String interpolation requires a supporting VB language version."
+    ]
+  },
+  {
+    "language": "vue",
+    "filename": "Component.vue",
+    "name": "VUE",
+    "extensions": [
+      ".vue"
+    ],
+    "old": "<template>\n  <h1>{{ greeting }}</h1>\n</template>\n\n<script>\nexport default {\n  data() {\n    return {\n      greeting: 'Hello, World!'\n    }\n  }\n}\n</script>\n",
+    "new": "<template>\n  <div>\n    <h1>{{ greeting }}</h1>\n    <button @click=\"changeGreeting\">Change</button>\n  </div>\n</template>\n\n<script>\nexport default {\n  data() {\n    return {\n      greeting: 'Hello, World!',\n      names: ['Alice', 'Bob', 'Carol'],\n      current: 0\n    }\n  },\n  methods: {\n    changeGreeting() {\n      this.current = (this.current + 1) % this.names.length;\n      this.greeting = 'Hello, ' + this.names[this.current] + '!';\n    }\n  }\n}\n</script>\n",
+    "expected_summary": "Wrap heading in div; add Change button; add names array and current index state; add changeGreeting method incrementing index modulo array length then replacing greeting.",
+    "caveats": [
+      "First click selects Bob, not Alice, because current begins at zero and is incremented before lookup."
+    ]
+  },
+  {
+    "language": "wast",
+    "filename": "module.wast",
+    "name": "WebAssembly Text",
+    "extensions": [
+      ".wast"
+    ],
+    "old": "(module\n  (func $add (param i32 i32) (result i32)\n    local.get 0\n    local.get 1\n    i32.add)\n  (export \"add\" (func $add)))\n",
+    "new": "(module\n  (func $add (param $a i32) (param $b i32) (result i32)\n    local.get $a\n    local.get $b\n    i32.add)\n  (func $multiply (param $a i32) (param $b i32) (result i32)\n    local.get $a\n    local.get $b\n    i32.mul)\n  (export \"add\" (func $add))\n  (export \"multiply\" (func $multiply)))\n",
+    "expected_summary": "Name add parameters a/b and replace numeric local references with names; add i32 multiplication function and export multiply; preserve add export and arithmetic.",
+    "caveats": [
+      "Contains only a module and no WAST assertions/script commands, so this does not establish WAST-specific script handling."
+    ]
+  },
+  {
+    "language": "wat",
+    "filename": "module.wat",
+    "name": "WebAssembly Text",
+    "extensions": [
+      ".wat"
+    ],
+    "old": "(module\n  (func $add (param i32 i32) (result i32)\n    local.get 0\n    local.get 1\n    i32.add)\n  (export \"add\" (func $add)))\n",
+    "new": "(module\n  (func $add (param $a i32) (param $b i32) (result i32)\n    local.get $a\n    local.get $b\n    i32.add)\n  (func $multiply (param $a i32) (param $b i32) (result i32)\n    local.get $a\n    local.get $b\n    i32.mul)\n  (export \"add\" (func $add))\n  (export \"multiply\" (func $multiply)))\n",
+    "expected_summary": "Name add parameters a/b and replace numeric local references with names; add i32 multiplication function and export multiply; preserve add export and arithmetic.",
+    "caveats": []
+  },
+  {
+    "language": "xml",
+    "filename": "data.xml",
+    "name": "XML",
+    "extensions": [
+      ".xml"
+    ],
+    "old": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n  <name>MyApp</name>\n  <version>1.0</version>\n  <server>\n    <host>localhost</host>\n    <port>8080</port>\n  </server>\n</config>\n",
+    "new": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n  <name>MyApp</name>\n  <version>2.0</version>\n  <server>\n    <host>0.0.0.0</host>\n    <port>8080</port>\n    <timeout>30</timeout>\n  </server>\n  <database>\n    <host>db.example.com</host>\n    <port>5432</port>\n    <name>mydb</name>\n  </database>\n</config>\n",
+    "expected_summary": "Change version text 1.0 to 2.0 and server host localhost to 0.0.0.0; add server timeout 30 and database host/port/name subtree; preserve server port 8080.",
+    "caveats": [
+      "Without an application schema these are document value changes, not proof of runtime service behavior."
+    ]
+  },
+  {
+    "language": "yaml",
+    "filename": "data.yaml",
+    "name": "Yaml",
+    "extensions": [
+      ".yml",
+      ".yaml"
+    ],
+    "old": "name: my-app\nversion: \"1.0\"\nserver:\n  host: localhost\n  port: 8080\n",
+    "new": "name: my-app\nversion: \"2.0\"\nserver:\n  host: 0.0.0.0\n  port: 8080\n  timeout: 30s\ndatabase:\n  host: db.example.com\n  port: 5432\n  name: mydb\n",
+    "expected_summary": "Change version string 1.0 to 2.0 and server host localhost to 0.0.0.0; add timeout string 30s and database host/port/name mapping; preserve server port 8080.",
+    "caveats": [
+      "Timeout 30s is a string; it is not the numeric timeout 30 used in the XML example."
+    ]
+  },
+  {
+    "language": "zig",
+    "filename": "code.zig",
+    "name": "ZIG",
+    "extensions": [
+      ".zig"
+    ],
+    "old": "const std = @import(\"std\");\n\nfn add(a: i32, b: i32) i32 {\n    return a + b;\n}\n\npub fn main() void {\n    std.debug.print(\"{d}\\n\", .{add(3, 4)});\n}\n",
+    "new": "const std = @import(\"std\");\n\nfn add(a: i32, b: i32) i32 {\n    return a + b;\n}\n\nfn multiply(a: i32, b: i32) i32 {\n    return a * b;\n}\n\npub fn main() void {\n    std.debug.print(\"add: {d}\\n\", .{add(3, 4)});\n    std.debug.print(\"mul: {d}\\n\", .{multiply(3, 4)});\n}\n",
+    "expected_summary": "Add multiply function; change existing output to labeled add result; print labeled multiplication result; preserve add implementation.",
+    "caveats": []
+  }
+]

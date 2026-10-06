@@ -15,6 +15,8 @@ async function main(): Promise<void> {
       !fs.existsSync(vsix) || !fs.existsSync(cli)) {
     throw new Error("Set INTENTUMDIFF_TEST_VSIX and INTENTUMDIFF_TEST_CLI to existing absolute artifact/executable paths");
   }
+  const captureSet = process.env.INTENTUMDIFF_CAPTURE_SET ?? "capabilities";
+  if (!/^(capabilities|languages-[0-3])$/u.test(captureSet)) throw new Error("Unknown capture set");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "intentumdiff-real-"));
   const user = path.join(temp, "profile"), extensions = path.join(temp, "extensions");
   const workspace = path.join(temp, "workspace");
@@ -46,15 +48,17 @@ async function main(): Promise<void> {
     core_commit: process.env.INTENTUMDIFF_TEST_CORE_COMMIT ?? null,
     wheel_sha256: process.env.INTENTUMDIFF_TEST_WHEEL_SHA256 ?? null,
     wheel_artifact_id: process.env.INTENTUMDIFF_TEST_ARTIFACT_ID ?? null,
+    capture_set: captureSet,
     mode: "installed VSIX bytes loaded by VS Code test host; external real CLI",
   }, null, 2));
   try {
   await runTests({ vscodeExecutablePath: executable, extensionDevelopmentPath: installed,
-    extensionTestsPath: path.join(__dirname, "realSuite.js"),
+    extensionTestsPath: path.join(__dirname, captureSet === "capabilities" ? "realSuite.js" : "languageSuite.js"),
     launchArgs: [workspace, "--user-data-dir", user, "--extensions-dir", extensions,
       "--disable-workspace-trust", "--skip-welcome"],
     extensionTestsEnv: { ELECTRON_RUN_AS_NODE: undefined,
       INTENTUMDIFF_TEST_CLI: cli,
+      INTENTUMDIFF_CAPTURE_SET: captureSet,
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1", INTENTUMDIFF_REAL_WORKSPACE: workspace,
       INTENTUMDIFF_REAL_INSTALLED: installed, INTENTUMDIFF_REAL_EVIDENCE: evidence },
   });
