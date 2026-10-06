@@ -73,8 +73,8 @@ bytes in VS Code's test host; test-only observation commands are enabled by that
 It does not run the source checkout as the extension or replace the real CLI with a stub.
 
 The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
-Python/core commits and reuses the exact Linux wheel from Python #97's four-platform
-run 37448070098 (artifact 11407195708). Archive and wheel SHA-256 checks run before
+Python/core commits and reuses the exact Linux wheel from Python #98's four-platform
+run 37511241359 (artifact 11435893665). Archive and wheel SHA-256 checks run before
 installation; embedded tested commits must match. Parser provenance is retained with
 the captures. Missing or expired artifacts fail explicitly and require a reviewed
 replacement pin; the workflow never silently substitutes a different runtime.
@@ -114,7 +114,7 @@ Current legacy-format capture approval requires `python scripts/validate_release
 ### Language and capability capture batches
 
 The real-runtime workflow runs the existing acceptance journey plus four disjoint language
-batches against the same checksum-pinned #97 wheel. `languageExamples.json` contains the 74
+batches against the same checksum-pinned #98 wheel. `languageExamples.json` contains the 74
 public examples already used by the docs language gallery, with source-review expectations
 and caveats. Each example produces native-diff and custom-review PNGs. No parser override
 is imposed: the recorded `observed.language` is the runtime's actual automatic routing.
