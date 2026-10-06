@@ -148,6 +148,27 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("intentumdiff.openReviewPanel", sourcePayload);
   await capture("recovered-review");
   await recorded;
+  // Additional real capability views, kept outside the short introductory video.
+  await vscode.commands.executeCommand("intentumdiff.openFullDiff", sourcePayload);
+  const lenses = await vscode.commands.executeCommand<vscode.CodeLens[]>("vscode.executeCodeLensProvider", source);
+  const peek = lenses?.find(lens => lens.command?.command === "intentumdiff.peekIntent")?.command;
+  assert.ok(peek, "A real intent lens must supply Peek arguments");
+  await vscode.commands.executeCommand(peek.command, ...(peek.arguments ?? []));
+  await capture("capability-peek");
+  await vscode.commands.executeCommand("closeReferenceSearch");
+  await vscode.commands.executeCommand("intentumdiff.openSemanticOnlyDiff", sourcePayload);
+  await capture("capability-semantic-only");
+  await vscode.commands.executeCommand("intentumdiff.expandSemanticDiffContext");
+  await capture("capability-expanded-context");
+  await vscode.commands.executeCommand("intentumdiff.openReviewPanel", sourcePayload);
+  await vscode.commands.executeCommand("intentumdiff.reviewPanel.toggleEvidenceDrawer");
+  await capture("capability-evidence-drawer");
+  await vscode.commands.executeCommand("intentumdiff.reviewPanel.toggleRail");
+  await capture("capability-review-rail");
+  await vscode.commands.executeCommand("intentumdiff.openReviewDashboard");
+  await capture("capability-dashboard");
+  await vscode.commands.executeCommand("intentumdiff.openDiagnostics");
+  await capture("capability-diagnostics");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", path.join(evidence, "workflow.mp4"), "-filter_complex", "[0:v]fps=8,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse=dither=sierra2_4a", path.join(evidence, "workflow.gif")], { timeout: 60000 });
   fs.writeFileSync(path.join(evidence, "results.json"), JSON.stringify(results, null, 2));
 }

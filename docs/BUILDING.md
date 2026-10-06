@@ -73,8 +73,8 @@ bytes in VS Code's test host; test-only observation commands are enabled by that
 It does not run the source checkout as the extension or replace the real CLI with a stub.
 
 The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
-Python/core commits and reuses the exact Linux wheel from Python #95's four-platform
-run 37422076520 (artifact 11394029774). Archive and wheel SHA-256 checks run before
+Python/core commits and reuses the exact Linux wheel from Python #97's four-platform
+run 37448070098 (artifact 11407195708). Archive and wheel SHA-256 checks run before
 installation; embedded tested commits must match. Parser provenance is retained with
 the captures. Missing or expired artifacts fail explicitly and require a reviewed
 replacement pin; the workflow never silently substitutes a different runtime.
@@ -109,3 +109,31 @@ The real-runtime workflow now exercises a tracked PNG through the Rust image eng
 The older `release-media/manifest.json` captures lack recoverable build provenance. Its dimension check is a historical inventory check, not certification of the current candidate. Do not relabel those files with today's identity or advertise the current unpublished candidate as a released build. Use immutable commit URLs for reviewed repository media, and repeat acceptance after an authorized publication.
 
 Current legacy-format capture approval requires `python scripts/validate_release_media_manifest.py <manifest> --expected-version <candidate-version> --expected-commit <tested-build-commit>`. Missing identity, mismatched version, or mismatched commit fails. Omitting the candidate commit also fails. The historical inventory workflow runs the identity regression tests but does not certify those old images for publication. Current real-runtime captures use their own installed-VSIX identity and per-file checksum manifest.
+
+
+### Language and capability capture batches
+
+The real-runtime workflow runs the existing acceptance journey plus four disjoint language
+batches against the same checksum-pinned #97 wheel. `languageExamples.json` contains the 74
+public examples already used by the docs language gallery, with source-review expectations
+and caveats. Each example produces native-diff and custom-review PNGs. No parser override
+is imposed: the recorded `observed.language` is the runtime's actual automatic routing.
+An ambiguous extension or source fallback must be documented as observed, not labelled as
+successful coverage of the requested parser.
+
+The suite commits the old source, saves the new source through VS Code, waits for the real
+review, captures both views, and restores the baseline before the next case. Errors are
+retained and the batch fails after collecting the remaining cases. Output includes the
+independent source expectation and observed status; a passing collection run is not semantic
+correctness approval. All output and images require independent inspection before publication.
+
+The capability batch additionally captures Peek, semantic-only diff, expanded context,
+evidence drawer, review rail, dashboard and diagnostics. These are requested through actual
+extension commands, not fabricated webview state. A command returning does not prove its
+rendered result: inspect each image before marking the capability covered. Existing clean
+profile, installed VSIX, real external engine, capture hash and provenance rules still apply.
+
+Artifacts use `real-runtime-capabilities` and `real-runtime-languages-0` through `-3` names.
+Test sources and raw logs remain CI evidence; publish only reviewed documentation examples,
+media and public candidate identities. Git actions, all image modes and remaining transitions
+still need dedicated interaction evidence.
