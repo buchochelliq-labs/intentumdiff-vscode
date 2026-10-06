@@ -1580,3 +1580,16 @@ test("pending and failed reviews render explicit states without empty diff contr
     assert.match(doc.body.textContent ?? "", status === "pending" ? /Analysing/ : /Engine unavailable/);
   }
 });
+
+test("evidence counts remain literal without CSP-blocked decorative bars", () => {
+  const html = renderPanelHtml(buildReviewPanelModel(sampleFile, "addr = 1\n", "address = 1\n", "HEAD"),
+    { nonce: "test", cspSource: "vscode-resource:" });
+  const document = new JSDOM(html).window.document;
+  const rows = [...document.querySelectorAll(".change-bar")];
+  assert.equal(rows.length, 4);
+  for (const row of rows) {
+    assert.match(row.querySelector("strong")?.textContent ?? "", /^\d+$/u);
+    assert.equal(row.querySelector("i, [style]"), null,
+      "CSP rejects inline width attributes, turning even zero counts into full bars");
+  }
+});

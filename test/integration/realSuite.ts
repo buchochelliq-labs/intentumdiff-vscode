@@ -171,6 +171,7 @@ export async function run(): Promise<void> {
   await waitForVisible('.product-tab[data-review-view="intent"]', true, false, undefined,
     '.diff-app[data-review-view="intent"] [data-review-page="intent"]');
   await waitForVisible('.diff-app[data-review-view="intent"] [data-review-page="intent"]');
+  await waitForVisible('.intent-hero', false, true);
   await capture("capability-intent");
   await vscode.commands.executeCommand("intentumdiff.openReviewDashboard");
   await waitForVisible(".dashboard-pills", false, true);

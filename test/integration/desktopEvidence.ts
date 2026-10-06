@@ -38,7 +38,7 @@ async function evaluateTarget(url: string, expression: string): Promise<boolean>
 }
 
 /** Selectors run against renderer documents, including VS Code's webview frames. */
-export async function waitForVisible(selector: string, click = false, requireNoHorizontalOverflow = false, expectedText?: string, afterClickSelector?: string): Promise<void> {
+export async function waitForVisible(selector: string, click = false, requireNoOverflow = false, expectedText?: string, afterClickSelector?: string): Promise<void> {
   const profile = process.env.INTENTUMDIFF_REAL_PROFILE;
   if (!profile) throw new Error("Missing isolated desktop profile");
   const deadline = Date.now() + 30000;
@@ -52,7 +52,7 @@ export async function waitForVisible(selector: string, click = false, requireNoH
     const style = getComputedStyle(element);
     if (rect.width <= 0 || rect.height <= 0 || style.visibility === 'hidden' || style.display === 'none') return false;
     if (rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) return false;
-    ${requireNoHorizontalOverflow ? "if (element.scrollWidth > element.clientWidth + 1) return false;" : ""}
+    ${requireNoOverflow ? "if (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1) return false;" : ""}
     ${click ? "element.click();" : ""}
     ${afterClickSelector === undefined ? "" : `await new Promise(resolve => setTimeout(resolve, 750));
     const selected = document.querySelector(${JSON.stringify(afterClickSelector)});

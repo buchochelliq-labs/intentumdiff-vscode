@@ -2095,8 +2095,7 @@ function metricTile(label: string, value: string | number): string {
 }
 
 function changeBar(label: string, value: number, kind: "insert" | "delete" | "change" | "semantic"): string {
-  const width = Math.max(4, Math.min(100, value * 12));
-  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong><i style="--bar-width:${width}%"></i></div>`;
+  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
 }
 
 function releaseNoteItems(lines: string[], emptyLabel: string): string {
