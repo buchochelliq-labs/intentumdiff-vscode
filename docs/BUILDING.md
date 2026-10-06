@@ -73,7 +73,11 @@ bytes in VS Code's test host; test-only observation commands are enabled by that
 It does not run the source checkout as the extension or replace the real CLI with a stub.
 
 The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
-Python/core commits and verifies the two parser component checksums before building.
+Python/core commits and reuses the exact Linux wheel from Python #94's four-platform
+run 37404993785 (artifact 11387124735). Archive and wheel SHA-256 checks run before
+installation; embedded tested commits must match. Parser provenance is retained with
+the captures. Missing or expired artifacts fail explicitly and require a reviewed
+replacement pin; the workflow never silently substitutes a different runtime.
 It covers Python and JavaScript partial-signature changes, native diff tabs, CodeLens,
 review-panel creation and recovery after committing valid source. Rust-only mode is
 required. It records VSIX/wheel identity, test results and actual X-display captures under
@@ -83,7 +87,8 @@ complete theme/layout/accessibility audit. Remaining #48 media criteria stay ope
 The automated panel check verifies the current file's active panel, not DOM rendering.
 Inspect the uploaded captures before claiming visual acceptance. Local runs record unknown
 Python/core commits unless supplied by the verified build; CI obtains these from the actual
-checked-out build inputs. The local executable alone does not prove its source commit.
+checksum-verified wheel evidence. The Python identity is the tested synthetic merge
+commit, whose parents include PR #94 head `416d3c6d563f4ccd3266bcabd8055ef29e994574`. The local executable alone does not prove its source commit.
 
 The real-runtime suite deliberately requests its first review before opening the review
 view. This guards #55: manual refresh must retain its explicit hidden-view permission

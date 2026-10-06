@@ -44,6 +44,8 @@ async function main(): Promise<void> {
     extension_commit: process.env.GITHUB_SHA ?? "local", vscode_version: "1.138.0",
     python_commit: process.env.INTENTUMDIFF_TEST_PYTHON_COMMIT ?? null,
     core_commit: process.env.INTENTUMDIFF_TEST_CORE_COMMIT ?? null,
+    wheel_sha256: process.env.INTENTUMDIFF_TEST_WHEEL_SHA256 ?? null,
+    wheel_artifact_id: process.env.INTENTUMDIFF_TEST_ARTIFACT_ID ?? null,
     mode: "installed VSIX bytes loaded by VS Code test host; external real CLI",
   }, null, 2));
   try {
