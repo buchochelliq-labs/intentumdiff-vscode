@@ -29,6 +29,14 @@ async function main(): Promise<void> {
     "intentumdiff.executable": cli, "intentumdiff.enabled": true,
     "intentumdiff.intent.llm.enabled": false, "intentumdiff.schemas.fetchMode": "off",
     "intentumdiff.ref": "HEAD", "intentumdiff.debounceMs": 50,
+    // Synthetic fixtures only: retain wire ordering to diagnose missing review responses.
+    "intentumdiff.trace": true,
+    "editor.wordWrap": "on", "diffEditor.wordWrap": "on",
+    "diffEditor.hideUnchangedRegions.enabled": false,
+    "diffEditor.renderSideBySide": true,
+    "diffEditor.useInlineViewWhenSpaceIsLimited": false,
+    "editor.minimap.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
     "workbench.startupEditor": "none", "security.workspace.trust.enabled": false,
   }));
   const executable = await downloadAndUnzipVSCode({ version: "1.138.0" });

@@ -42,6 +42,10 @@ export async function run(): Promise<void> {
   assert.ok(extension);
   assert.equal(extension.extensionPath, process.env.INTENTUMDIFF_REAL_INSTALLED);
   await extension.activate();
+  // Make source readable before taking evidence; do not rely on profile defaults.
+  await vscode.commands.executeCommand("workbench.action.closeSidebar");
+  await vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
+  await vscode.commands.executeCommand("workbench.action.closePanel");
   const results: object[] = [];
   const failures: string[] = [];
   const capture = async (name: string) => {
@@ -95,6 +99,10 @@ export async function run(): Promise<void> {
       await vscode.commands.executeCommand("intentumdiff.openFullDiff", payload);
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputTextDiff && t.input.modified.toString() === uri.toString())), "native diff");
       await assertComparisonStatus(relativePath);
+      // Every fixture source line, including changed suffixes and offscreen rows,
+      // must be visibly rendered before the native evidence can be accepted.
+      await waitForVisible(".monaco-diff-editor", false, false, undefined, undefined,
+        [...f.old.split("\n"), ...f.new.split("\n")].filter(line => line.trim().length > 0));
       await capture(`language-${f.language}-native`);
       await assertComparisonStatus(relativePath);
       results.push({ example: f.language, relativePath, expected_summary: f.expected_summary,
@@ -102,7 +110,8 @@ export async function run(): Promise<void> {
     } catch (error) {
       failures.push(`${f.language}: ${String(error)}`);
       await capture(`language-${f.language}-failure`);
-      results.push({ example: f.language, error: String(error), observed: await state() });
+      results.push({ example: f.language, error: String(error), observed: await state(),
+        lifecycle: await vscode.commands.executeCommand("intentumdiff.test.getReviewState") });
     } finally {
       fs.writeFileSync(path.join(evidence, "language-results.json"), JSON.stringify(results, null, 2));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");

@@ -38,7 +38,7 @@ async function evaluateTarget(url: string, expression: string): Promise<boolean>
 }
 
 /** Selectors run against renderer documents, including VS Code's webview frames. */
-export async function waitForVisible(selector: string, click = false, requireNoOverflow = false, expectedText?: string, afterClickSelector?: string): Promise<void> {
+export async function waitForVisible(selector: string, click = false, requireNoOverflow = false, expectedText?: string, afterClickSelector?: string, expectedSourceLines?: string[]): Promise<void> {
   const profile = process.env.INTENTUMDIFF_REAL_PROFILE;
   if (!profile) throw new Error("Missing isolated desktop profile");
   const deadline = Date.now() + 30000;
@@ -53,6 +53,35 @@ export async function waitForVisible(selector: string, click = false, requireNoO
     if (rect.width <= 0 || rect.height <= 0 || style.visibility === 'hidden' || style.display === 'none') return false;
     if (rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) return false;
     ${requireNoOverflow ? "if (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1) return false;" : ""}
+    ${expectedSourceLines === undefined ? "" : `
+    // Read only glyphs wholly inside the native editor's scroll viewport.
+    // DOM textContent alone would accept clipped/offscreen source.
+    let visibleSource = "";
+    for (const line of element.querySelectorAll(".view-lines .view-line")) {
+      const viewport = line.closest(".monaco-scrollable-element");
+      if (!viewport) continue;
+      const bounds = viewport.getBoundingClientRect();
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        for (let index = 0; index < node.textContent.length; index++) {
+          const glyph = document.createRange();
+          glyph.setStart(node, index); glyph.setEnd(node, index + 1);
+          const boxes = [...glyph.getClientRects()];
+          if (boxes.length && boxes.every(box => box.width > 0 && box.height > 0 &&
+            box.left >= Math.max(0, bounds.left) - 1 &&
+            box.right <= Math.min(innerWidth, bounds.right) + 1 &&
+            box.top >= Math.max(0, bounds.top) - 1 &&
+            box.bottom <= Math.min(innerHeight, bounds.bottom) + 1)) {
+            visibleSource += node.textContent[index];
+          }
+        }
+      }
+    }
+    const compact = value => value.replace(/\\s+/gu, "");
+    const visible = compact(visibleSource);
+    if (!${JSON.stringify(expectedSourceLines)}.every(line => visible.includes(compact(line)))) return false;
+    `}
     ${click ? "element.click();" : ""}
     ${afterClickSelector === undefined ? "" : `await new Promise(resolve => setTimeout(resolve, 750));
     const selected = document.querySelector(${JSON.stringify(afterClickSelector)});
