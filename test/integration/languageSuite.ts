@@ -49,6 +49,14 @@ export async function run(): Promise<void> {
     await delay(1500);
     execFileSync("scrot", [path.join(evidence, `${name}.png`)]);
   };
+  const assertComparisonStatus = async (relativePath: string) => {
+    const current = await vscode.commands.executeCommand<{ comparisonStatus: string; comparisonStatusTooltip: string }>("intentumdiff.test.getReviewState");
+    assert.ok(current?.comparisonStatus.startsWith("IntentumDiff:"), "comparison status missing");
+    assert.doesNotMatch(current.comparisonStatus, /style-only|clean|diffing|pending/u,
+      `${relativePath}: active meaningful comparison has contradictory status`);
+    assert.ok(current.comparisonStatusTooltip.includes(relativePath),
+      `${relativePath}: status belongs to another comparison`);
+  };
   for (const f of examples) {
     assert.match(f.language, /^[a-z0-9-]+$/u);
     assert.equal(path.basename(f.filename), f.filename);
@@ -81,10 +89,14 @@ export async function run(): Promise<void> {
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputWebview)), "review tab");
       await waitForVisible(".product-file-line strong", false, false, relativePath);
       await waitForVisible('.diff-app[data-diff-mode="text"] .diff-workbench');
+      await assertComparisonStatus(relativePath);
       await capture(`language-${f.language}-review`);
+      await assertComparisonStatus(relativePath);
       await vscode.commands.executeCommand("intentumdiff.openFullDiff", payload);
       await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t => t.isActive && t.input instanceof vscode.TabInputTextDiff && t.input.modified.toString() === uri.toString())), "native diff");
+      await assertComparisonStatus(relativePath);
       await capture(`language-${f.language}-native`);
+      await assertComparisonStatus(relativePath);
       results.push({ example: f.language, relativePath, expected_summary: f.expected_summary,
         caveats: f.caveats, observed, assessment: "awaiting_independent_output_and_visual_review" });
     } catch (error) {
