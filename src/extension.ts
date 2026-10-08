@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 29187)
-Total output lines: 2968
-
 import { statusForOwner, type StatusContext } from "./statusOwnership";
 import { panelReviewFile } from "./reviewPanelState";
 import * as path from "path";
@@ -688,7 +685,1499 @@ class PysdController implements vscode.Disposable {
       }),
       vscode.workspace.onDidCreateFiles(() => this.scheduleReviewRefresh("file create")),
       vscode.workspace.onDidDeleteFiles(() => this.scheduleReviewRefresh("file delete")),
-      vscode.workspace.onDidRenameFiles(() => this.scheduleReviewRefresh("file rename", …14187 tokens truncated…      if (counterpart) {
+      vscode.workspace.onDidRenameFiles(() => this.scheduleReviewRefresh("file rename", { forceFull: true })),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleReviewRefresh("workspace folders", { forceFull: true })),
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor) {
+          this.applyCachedDecorations(editor);
+          this.scheduleDocument(editor.document);
+        }
+        this.updateEditorContext();
+      }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (
+          event.affectsConfiguration("intentumdiff.executable")
+          || event.affectsConfiguration("intentumdiff.liveServer.engine")
+          || event.affectsConfiguration("intentumdiff.ref")
+          || event.affectsConfiguration("intentumdiff.enabled")
+          || event.affectsConfiguration("intentumdiff.debounceMs")
+          || event.affectsConfiguration("intentumdiff.fuel")
+          || event.affectsConfiguration("intentumdiff.trace")
+          || event.affectsConfiguration("intentumdiff.schemas")
+        ) {
+          this.restartAll();
+        } else if (
+          event.affectsConfiguration("intentumdiff.diff.hideComments")
+          || event.affectsConfiguration("intentumdiff.diff.fallbackDiff")
+          || event.affectsConfiguration("intentumdiff.diff.contextLines")
+          || event.affectsConfiguration("intentumdiff.diff.defaultMode")
+          || event.affectsConfiguration("intentumdiff.visualization")
+        ) {
+          this.readVisualSettings();
+          this.updateEditorContext();
+          this.refreshVisibleDecorations();
+          if (
+            event.affectsConfiguration("intentumdiff.diff.hideComments")
+            || event.affectsConfiguration("intentumdiff.diff.contextLines")
+            || event.affectsConfiguration("intentumdiff.visualization")
+          ) {
+            void this.diffSurfaces.refreshOpenSemanticOnly();
+          }
+        }
+        if (event.affectsConfiguration("intentumdiff.review.groupFilesBy")
+          || event.affectsConfiguration("intentumdiff.review.diffSurface")) {
+          this.applyReviewGrouping();
+        }
+        if (event.affectsConfiguration("intentumdiff.review.pollIntervalMs") && this.reviewViewVisible) {
+          this.reviewPolling.stopPolling();
+          this.reviewPolling.startPolling();
+        }
+      }),
+    );
+    if (this.context.extensionMode === vscode.ExtensionMode.Test) {
+      this.context.subscriptions.push(
+        vscode.commands.registerCommand("intentumdiff.test.getReviewState", () => this.reviewStateForTests()),
+        vscode.commands.registerCommand("intentumdiff.test.getActiveDiffState", () => this.activeDiffStateForTests()),
+      );
+    }
+    const visibilityTimer = setTimeout(() => {
+      this.syncReviewViewVisibility("initial view visibility");
+    }, 0);
+    this.context.subscriptions.push(new vscode.Disposable(() => clearTimeout(visibilityTimer)));
+    void this.reviewPolling.registerGitStatusWatcher();
+    this.readVisualSettings();
+    this.updateEditorContext();
+    this.scheduleDocument(vscode.window.activeTextEditor?.document);
+  }
+
+  dispose(): void {
+    this.clearTimers();
+    this.serverSessions.disposeAll();
+    this.clearVisuals();
+    for (const decorationType of Object.values(this.decorationTypes)) {
+      decorationType.dispose();
+    }
+    this.semanticLineHintDecoration.dispose();
+  }
+
+  private toggle(): void {
+    this.paused = !this.paused;
+    if (this.paused) {
+      this.status.text = "IntentumDiff: paused";
+      this.clearTimers();
+      this.clearVisuals();
+      this.serverSessions.disposeAll();
+      return;
+    }
+    this.status.text = "IntentumDiff: enabled";
+    this.scheduleDocument(vscode.window.activeTextEditor?.document);
+    this.scheduleReviewRefresh("enabled", { forceFull: true });
+  }
+
+  private toggleEditorDiff(): void {
+    this.setEditorDiffVisible(!this.overlaysVisible);
+  }
+
+  private toggleHideComments(): void {
+    this.setHideComments(!this.hideComments);
+  }
+
+  private setEditorDiffVisible(visible: boolean): void {
+    this.overlaysVisible = visible;
+    this.updateEditorContext();
+    this.refreshVisibleDecorations();
+    this.status.text = this.overlaysVisible ? "IntentumDiff: overlays shown" : "IntentumDiff: overlays hidden";
+  }
+
+  private setHideComments(hidden: boolean): void {
+    this.hideComments = hidden;
+    this.updateEditorContext();
+    this.refreshVisibleDecorations();
+    void this.diffSurfaces.refreshOpenSemanticOnly();
+    this.status.text = this.hideComments ? "IntentumDiff: comments hidden" : "IntentumDiff: comments shown";
+  }
+
+  private async configureVisibleChangeTypes(): Promise<void> {
+    const config = vscode.workspace.getConfiguration("intentumdiff");
+    const options = [
+      { label: "Additions", setting: "visualization.showAdditions" },
+      { label: "Deletions", setting: "visualization.showDeletions" },
+      { label: "Modifications", setting: "visualization.showModifications" },
+      { label: "Moves and Refactorings", setting: "visualization.movedCode" },
+      { label: "Inline Deletion Markers", setting: "visualization.inlineDeletionMarkers" },
+      { label: "Comment Changes", setting: "diff.hideComments", inverted: true },
+    ];
+    const picked = await vscode.window.showQuickPick(
+      options.map((option) => ({
+        ...option,
+        picked: option.inverted
+          ? !config.get(option.setting, false)
+          : config.get(option.setting, true),
+      })),
+      {
+        canPickMany: true,
+        title: "IntentumDiff visible change types",
+      },
+    );
+    if (!picked) {
+      return;
+    }
+    const visible = new Set(picked.map((item) => item.setting));
+    await Promise.all(options.map((option) => config.update(
+      option.setting,
+      option.inverted ? !visible.has(option.setting) : visible.has(option.setting),
+      vscode.ConfigurationTarget.Workspace,
+    )));
+    this.readVisualSettings();
+    this.refreshVisibleDecorations();
+    void this.diffSurfaces.refreshOpenSemanticOnly();
+  }
+
+  private restartAll(): void {
+    this.clearTimers();
+    this.serverSessions.disposeAll();
+    this.clearVisuals();
+    this.liveServerWarningKeys.clear();
+    this.clearReview();
+    this.baseContentProvider.clear();
+    this.emptyContentProvider.clear();
+    this.status.text = "IntentumDiff: restarting";
+    this.scheduleDocument(vscode.window.activeTextEditor?.document);
+    this.scheduleReviewRefresh("restart", { forceFull: true });
+  }
+
+  private diffActiveEditorNow(): void {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document) {
+      void vscode.window.showInformationMessage("IntentumDiff: no active editor");
+      return;
+    }
+    this.diffDocument(document);
+  }
+
+  private async openReviewDashboard(): Promise<void> {
+    await vscode.commands.executeCommand("workbench.view.extension.intentumdiffActivity");
+    await vscode.commands.executeCommand("intentumdiff.dashboard.focus");
+  }
+
+  private async cycleReviewGrouping(): Promise<void> {
+    const config = vscode.workspace.getConfiguration("intentumdiff");
+    const current = readReviewGroupingMode();
+    const next = nextReviewFileGroupingMode(current);
+    await config.update("review.groupFilesBy", next, vscode.ConfigurationTarget.Global);
+    this.applyReviewGrouping();
+    void vscode.window.showInformationMessage(`IntentumDiff review grouping: ${reviewGroupingModeLabel(next)}`);
+  }
+
+  private applyReviewGrouping(): void {
+    this.reviewTree.setGroupingMode(readReviewGroupingMode());
+    this.reviewTree.setDiffSurface(readReviewDiffSurface());
+    this.reviewDashboardProvider?.refresh();
+  }
+
+  private async handleReviewWebviewMessage(message: ReviewWebviewMessage): Promise<void> {
+    if (message.command === "refresh") {
+      this.requestFullReview("webview refresh");
+      return;
+    }
+    if (message.command === "cycleGrouping") {
+      await this.cycleReviewGrouping();
+      return;
+    }
+    if (message.command === "copyReleaseNotes" || message.command === "exportReleaseNotes") {
+      await this.handleReleaseNotesExport(message.command, message.payload);
+      return;
+    }
+    if (message.command === "openTimelineSnapshot") {
+      this.openTimelineSnapshot(message.payload);
+      return;
+    }
+    if (message.command === "openCustomDiff") {
+      await this.openReviewPanel(message.payload);
+      return;
+    }
+    if (message.command === "openSemanticOnlyDiff") {
+      await this.diffSurfaces.open(message.payload, "semanticOnly");
+      return;
+    }
+    if (message.command === "openNativeDiff" || message.command === "reveal") {
+      await this.diffSurfaces.open(message.payload, "full");
+      return;
+    }
+    if (message.command === "stageFile") {
+      await vscode.commands.executeCommand("intentumdiff.reviewPanel.stageFile", message.payload);
+      return;
+    }
+    if (message.command === "revertFile") {
+      await vscode.commands.executeCommand("intentumdiff.reviewPanel.revertFile", message.payload);
+      return;
+    }
+    if (message.command === "stageHunk" || message.command === "revertHunk" || message.command === "applyHunk") {
+      await vscode.commands.executeCommand(`intentumdiff.reviewPanel.${message.command}`, message.payload);
+      return;
+    }
+    if (message.command === "editHunk") {
+      await vscode.commands.executeCommand("intentumdiff.reviewPanel.applyHunk", message.payload);
+    }
+  }
+
+  /**
+   * Resolve the review file payload release notes should be generated for:
+   * prefer the payload the button carried, else the active review panel's file.
+   */
+  private releaseNotesPayloadFor(
+    payload: ReviewWebviewPayload | undefined,
+  ): OpenFileReviewPayload | undefined {
+    if (payload?.relativePath) {
+      try {
+        assertSafeRelativePath(payload.relativePath);
+      } catch {
+        return undefined;
+      }
+      return { ...payload, relativePath: payload.relativePath };
+    }
+    return this.reviewPanelPayload;
+  }
+
+  private async handleReleaseNotesExport(
+    command: "copyReleaseNotes" | "exportReleaseNotes",
+    payload: ReviewWebviewPayload | undefined,
+  ): Promise<void> {
+    const filePayload = this.releaseNotesPayloadFor(payload);
+    if (!filePayload) {
+      void vscode.window.showInformationMessage("IntentumDiff: no reviewed file is available for release notes.");
+      return;
+    }
+    const model = await this.buildReviewPanelModelForPayload(filePayload);
+    if (!model || model.file.status !== "ready") {
+      // Export requires completed evidence; pending state is shown in the panel.
+      return;
+    }
+    const notes = buildReleaseNotes(model.diff);
+    if (command === "copyReleaseNotes") {
+      const narrativeSource = new vscode.CancellationTokenSource();
+      let narrative: string | undefined;
+      try {
+        narrative = await this.intentLlmExplainer?.draftReleaseNarrative(notes, narrativeSource.token);
+      } finally {
+        narrativeSource.dispose();
+      }
+      const markdown = releaseNotesToMarkdown(notes, { title: `Release notes — ${filePayload.relativePath}`, narrative });
+      await vscode.env.clipboard.writeText(markdown);
+      void vscode.window.showInformationMessage("IntentumDiff: release notes copied as Markdown.");
+      return;
+    }
+    const baseName = path.basename(filePayload.relativePath).replace(/\.[^.]+$/u, "") || "release-notes";
+    const defaultUri = vscode.Uri.file(
+      path.join(vscode.Uri.parse(filePayload.folderUri).fsPath, `${baseName}.release-notes.json`),
+    );
+    const target = await vscode.window.showSaveDialog({
+      saveLabel: "Export release notes",
+      filters: { JSON: ["json"] },
+      defaultUri,
+    });
+    if (!target) {
+      return;
+    }
+    await vscode.workspace.fs.writeFile(target, Buffer.from(releaseNotesToJson(notes), "utf8"));
+    void vscode.window.showInformationMessage(`IntentumDiff: release notes exported to ${path.basename(target.fsPath)}.`);
+  }
+
+  private openTimelineSnapshot(payload: ReviewWebviewPayload | undefined): void {
+    const snapshotId = payload?.snapshotId;
+    const snapshot = snapshotId
+      ? this.telemetry.timeline().find((item) => item.id === snapshotId)
+      : undefined;
+    if (!snapshot) {
+      void vscode.window.showWarningMessage("IntentumDiff: review timeline snapshot is no longer available.");
+      return;
+    }
+    this.output.appendLine(JSON.stringify({
+      reviewTimelineSnapshot: snapshot,
+    }, null, 2));
+    this.output.show(true);
+    void vscode.window.showInformationMessage(
+      `IntentumDiff snapshot: ${snapshot.folderName}, ${snapshot.fileCount} files, ${snapshot.semanticChangeCount} semantic changes, ${snapshot.errorCount} errors, ${snapshot.fuelHotspotCount} fuel hotspots.`,
+    );
+  }
+
+  private async handleSemanticHunkAction(
+    kind: SemanticReviewActionKind,
+    payload: ReviewWebviewPayload | undefined,
+  ): Promise<void> {
+    const editResult = semanticReviewHunkEditForPayload(
+      { ...payload, actionKind: kind },
+      (folderUri) => vscode.Uri.parse(folderUri).fsPath,
+    );
+    if (editResult.edit && (kind === "applyHunk" || kind === "revertHunk")) {
+      await this.applySemanticHunkEdit(kind, editResult.edit);
+      return;
+    }
+    if (editResult.edit && kind === "stageHunk") {
+      await this.stageSemanticHunkEdit(payload, editResult.edit);
+      return;
+    }
+    if (kind !== "stageHunk" && editResult.error) {
+      void vscode.window.showWarningMessage(
+        `IntentumDiff: semantic hunk action is unavailable: ${editResult.error}`,
+      );
+      return;
+    }
+    const result = semanticReviewActionTargetForPayload(
+      { ...payload, actionKind: kind },
+      (folderUri) => vscode.Uri.parse(folderUri).fsPath,
+    );
+    if (!result.target) {
+      void vscode.window.showWarningMessage(
+        `IntentumDiff: semantic hunk action is unavailable${result.error ? `: ${result.error}` : "."}`,
+      );
+      return;
+    }
+    const lineText = `${result.target.side} lines ${result.target.startLine}-${result.target.endLine}`;
+    this.output.appendLine(JSON.stringify({
+      semanticHunkActionPreview: {
+        kind: result.target.kind,
+        file: result.target.fsPath,
+        side: result.target.side,
+        startLine: result.target.startLine,
+        endLine: result.target.endLine,
+        label: result.target.previewLabel,
+        error: editResult.error,
+      },
+    }, null, 2));
+    void vscode.window.showInformationMessage(`${result.target.previewLabel} (${lineText})`);
+  }
+
+  private async applySemanticHunkEdit(
+    kind: SemanticReviewActionKind,
+    hunkEdit: SemanticReviewHunkEdit,
+  ): Promise<void> {
+    if (kind === "revertHunk") {
+      const choice = await vscode.window.showWarningMessage(
+        `${hunkEdit.target.previewLabel}\n${hunkEdit.target.fsPath}\nworking lines ${hunkEdit.editStartLine}-${hunkEdit.editEndLine}`,
+        { modal: true },
+        "Revert Hunk",
+      );
+      if (choice !== "Revert Hunk") {
+        return;
+      }
+    }
+    const uri = vscode.Uri.file(hunkEdit.target.fsPath);
+    const document = await vscode.workspace.openTextDocument(uri);
+    const startLine = Math.max(0, Math.min(document.lineCount, hunkEdit.editStartLine - 1));
+    const endLineExclusive = Math.max(startLine, Math.min(document.lineCount, hunkEdit.editEndLine));
+    const range = new vscode.Range(startLine, 0, endLineExclusive, 0);
+    const replacementText = hunkEdit.replacementText.length > 0 ? `${hunkEdit.replacementText}\n` : "";
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(uri, range, replacementText);
+    const applied = await vscode.workspace.applyEdit(edit);
+    this.output.appendLine(JSON.stringify({
+      semanticHunkActionApplied: {
+        kind,
+        file: hunkEdit.target.fsPath,
+        editStartLine: hunkEdit.editStartLine,
+        editEndLine: hunkEdit.editEndLine,
+        applied,
+        previewPatch: hunkEdit.previewPatch,
+      },
+    }, null, 2));
+    if (applied) {
+      await document.save();
+      void vscode.window.showInformationMessage(`${hunkEdit.target.previewLabel} applied.`);
+    } else {
+      void vscode.window.showWarningMessage(`IntentumDiff: ${hunkEdit.target.previewLabel} did not apply.`);
+    }
+  }
+
+  private async stageSemanticHunkEdit(
+    payload: ReviewWebviewPayload | undefined,
+    hunkEdit: SemanticReviewHunkEdit,
+  ): Promise<void> {
+    if (!hunkEdit.indexPatch) {
+      void vscode.window.showWarningMessage("IntentumDiff: semantic hunk stage is unavailable: patch could not be generated.");
+      return;
+    }
+    const folderUri = payload?.folderUri;
+    if (!folderUri) {
+      void vscode.window.showWarningMessage("IntentumDiff: semantic hunk stage is unavailable: missing workspace folder.");
+      return;
+    }
+    const repoFsPath = vscode.Uri.parse(folderUri).fsPath;
+    try {
+      await applyGitIndexPatch(repoFsPath, hunkEdit.indexPatch);
+      this.output.appendLine(JSON.stringify({
+        semanticHunkActionStaged: {
+          kind: hunkEdit.target.kind,
+          file: hunkEdit.target.fsPath,
+          relativePath: hunkEdit.relativePath,
+          editStartLine: hunkEdit.editStartLine,
+          editEndLine: hunkEdit.editEndLine,
+          indexPatch: hunkEdit.indexPatch,
+        },
+      }, null, 2));
+      void vscode.window.showInformationMessage(`${hunkEdit.target.previewLabel} staged.`);
+    } catch (error) {
+      void vscode.window.showWarningMessage(`IntentumDiff: semantic hunk stage failed: ${messageOf(error)}`);
+    }
+  }
+
+  private reviewPayloadUri(payload: OpenReviewPayload | ReviewWebviewPayload | undefined): vscode.Uri | undefined {
+    const result = reviewActionTargetForPayload(
+      payload,
+      (folderUri) => vscode.Uri.parse(folderUri).fsPath,
+    );
+    if (!result.target) {
+      if (result.error) {
+        void vscode.window.showWarningMessage(`IntentumDiff: unsafe review file target: ${result.error}`);
+      }
+      return undefined;
+    }
+    return vscode.Uri.file(result.target.fsPath);
+  }
+
+  private scheduleDocument(document: vscode.TextDocument | undefined): void {
+    if (!document || !this.isEnabled()) {
+      return;
+    }
+    const target = this.resolveDocument(document);
+    if (!target || isImageLikePath(target.relativePath)) {
+      // Binary images are reviewed via the perceptual asset panel, never the
+      // text engine — a text parser on a PNG balloons to invalid output.
+      return;
+    }
+    const key = document.uri.toString();
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      this.timers.delete(key);
+      this.diffDocument(document);
+    }, readLiveServerSettings().debounceMs);
+    this.timers.set(key, timer);
+  }
+
+  private setReviewViewVisible(visible: boolean, reason: string): void {
+    this.reviewViewVisible = visible;
+    if (!visible) {
+      this.reviewPolling.stopPolling();
+      return;
+    }
+    this.reviewPolling.startPolling();
+    const forceFull = !this.reviewWasVisible;
+    this.reviewWasVisible = true;
+    this.scheduleReviewRefresh(reason, { forceFull, immediate: forceFull });
+  }
+
+  private syncReviewViewVisibility(reason: string): void {
+    this.setReviewViewVisible(
+      this.reviewView?.visible === true
+        || this.scmReviewView?.visible === true
+        || this.reviewDashboardProvider?.visible === true,
+      reason,
+    );
+  }
+
+  private scheduleReviewRefresh(
+    reason: string,
+    options: { forceFull?: boolean; immediate?: boolean; allowHidden?: boolean } = {},
+  ): void {
+    if ((!this.reviewViewVisible && options.allowHidden !== true) || !this.isEnabled()) {
+      return;
+    }
+    if (this.streakResetRefreshReasons.has(reason)) {
+      this.resetReviewFailureStreak();
+    }
+    this.pendingReviewReason = reason;
+    this.pendingReviewForceFull = this.pendingReviewForceFull || options.forceFull === true;
+    this.pendingReviewAllowHidden = this.pendingReviewAllowHidden || options.allowHidden === true;
+    if (this.isReviewRefreshBusy()) {
+      this.reviewRefreshQueued = true;
+      return;
+    }
+    if (this.reviewRefreshTimer) {
+      clearTimeout(this.reviewRefreshTimer);
+    }
+    const delayMs = options.immediate === true
+      ? 0
+      : Math.max(250, readLiveServerSettings().debounceMs);
+    this.reviewRefreshTimer = setTimeout(() => {
+      this.reviewRefreshTimer = undefined;
+      void this.refreshReviewIfNeeded();
+    }, delayMs);
+  }
+
+  private requestFullReview(reason: string): void {
+    this.scheduleReviewRefresh(reason, { forceFull: true, immediate: true, allowHidden: true });
+  }
+
+  private scheduleReviewRefreshForKnownFileChange(uri: vscode.Uri): void {
+    const target = this.resolveWorkspaceUri(uri);
+    if (!target) {
+      return;
+    }
+    if (!this.reviewFiles.has(reviewKey(target.folder.uri.toString(), target.relativePath))) {
+      return;
+    }
+    this.scheduleReviewRefresh("file change");
+  }
+
+  private isReviewRefreshBusy(): boolean {
+    return this.reviewRefreshRunning || this.hasInFlightReviewWork();
+  }
+
+  private hasInFlightReviewWork(): boolean {
+    return this.reviewDispatching
+      || this.reviewRequests.size > 0
+      || this.incrementalReviewRequests.size > 0;
+  }
+
+  private cancelPendingReviewRefresh(): void {
+    if (this.reviewRefreshTimer) {
+      clearTimeout(this.reviewRefreshTimer);
+      this.reviewRefreshTimer = undefined;
+    }
+    this.reviewRefreshQueued = false;
+    this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
+    this.pendingReviewReason = "refresh";
+  }
+
+  private async refreshReviewIfNeeded(): Promise<void> {
+    // Explicit hidden-view permission (manual/webview refresh) must survive
+    // the timer boundary even when the review view is hidden.
+    if (this.reviewRefreshRunning || (!this.reviewViewVisible && !this.pendingReviewAllowHidden) || !this.isEnabled()) {
+      return;
+    }
+    if (this.hasInFlightReviewWork()) {
+      this.reviewRefreshQueued = true;
+      return;
+    }
+    const retrySuppression = this.autoReviewRetrySuppression();
+    if (retrySuppression) {
+      this.reviewRefreshQueued = false;
+      this.status.text = "IntentumDiff: review failed (auto-retry paused)";
+      if (!this.reviewRetrySuppressedLogged) {
+        this.reviewRetrySuppressedLogged = true;
+        this.output.appendLine(JSON.stringify({
+          reviewAutoRetryPaused: {
+            reason: retrySuppression,
+            lastError: this.lastReviewFailure ?? null,
+            hint: "Edit a file or run 'IntentumDiff: Refresh Semantic Changes' to retry.",
+          },
+        }, null, 2));
+      }
+      return;
+    }
+    this.reviewRefreshRunning = true;
+    const forceFull = this.pendingReviewForceFull;
+    const reason = this.pendingReviewReason;
+    this.pendingReviewForceFull = false;
+    this.pendingReviewAllowHidden = false;
+    this.reviewRefreshQueued = false;
+    try {
+      if (forceFull) {
+        this.output.appendLine(JSON.stringify({
+          autoReviewRefresh: { kind: "full", reason },
+        }, null, 2));
+        await this.refreshReview(reason);
+        return;
+      }
+
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      if (folders.length === 0) {
+        return;
+      }
+
+      const plans: Array<{
+        folder: vscode.WorkspaceFolder;
+        current: ReviewRefreshSnapshot;
+        refresh: ReviewRefreshFile[];
+        remove: string[];
+      }> = [];
+      let fullReason: string | undefined;
+      for (const folder of folders) {
+        const folderUri = folder.uri.toString();
+        let current: ReviewRefreshSnapshot;
+        try {
+          current = await createReviewSnapshot(folder);
+        } catch (error) {
+          fullReason = `status discovery failed: ${messageOf(error)}`;
+          break;
+        }
+        const plan = planReviewRefresh(this.reviewSnapshots.get(folderUri), current, {
+          hasCrossFileChanges: this.reviewCrossFileEntries.some((entry) => entry.folderUri === folderUri),
+          maxIncrementalPaths: 10,
+        });
+        if (plan.kind === "full") {
+          fullReason = plan.reason;
+          break;
+        }
+        plans.push({ folder, current, refresh: plan.refresh, remove: plan.remove });
+      }
+
+      if (fullReason) {
+        this.output.appendLine(JSON.stringify({
+          autoReviewRefresh: { kind: "full", reason: fullReason },
+        }, null, 2));
+        await this.refreshReview(fullReason);
+        return;
+      }
+
+      let changed = false;
+      for (const plan of plans) {
+        const folderUri = plan.folder.uri.toString();
+        for (const relativePath of plan.remove) {
+          this.removeReviewFile(plan.folder, relativePath);
+          changed = true;
+        }
+        if (plan.refresh.length > 0) {
+          this.reviewFiles.delete(reviewKey(folderUri, ".intentumdiff-review"));
+        }
+        for (const file of plan.refresh) {
+          this.markReviewFilePending(plan.folder, file.relativePath, pendingMessageFor(file));
+          changed = true;
+        }
+        this.reviewSnapshots.set(folderUri, plan.current);
+      }
+      if (changed) {
+        this.updateReviewTree();
+      }
+      for (const plan of plans) {
+        for (const file of plan.refresh) {
+          await this.diffReviewFile(plan.folder, file);
+        }
+      }
+      if (changed) {
+        this.finishReviewIfIdle();
+      }
+    } finally {
+      this.reviewRefreshRunning = false;
+      this.drainQueuedReviewRefresh();
+    }
+  }
+
+  private reviewStateForTests(): object {
+    return {
+      files: [...this.reviewFiles.values()].map((file) => ({
+        folderName: file.folderName,
+        folderUri: file.folderUri,
+        relativePath: file.relativePath,
+        status: file.status,
+        language: file.diff?.language,
+        changeCount: file.diff?.changes?.length ?? 0,
+        changeTypes: [...new Set((file.diff?.changes ?? []).map((change) => change.change_type))],
+        groupKinds: [...new Set((file.diff?.change_groups ?? []).map((group) => group.kind))],
+        guardrailCount: file.diff?.guardrail_violations?.length ?? 0,
+        parseErrorCount: file.diff?.parse_errors?.length ?? 0,
+        isStyleOnly: isStyleOnlyReviewDiff(file.diff),
+        assetDiff: file.diff?.metadata?.asset_diff,
+      })),
+      comparisonStatus: this.status.text,
+      comparisonStatusTooltip: this.status.tooltip,
+      crossFileCount: this.reviewCrossFileEntries.length,
+      pendingReviewCount:
+        this.reviewRequests.size
+        + this.incrementalReviewRequests.size
+        + (this.reviewDispatching || this.reviewRefreshRunning ? 1 : 0),
+      generation: this.reviewGeneration,
+      snapshots: [...this.reviewSnapshots.entries()].map(([folderUri, snapshot]) => ({
+        folderUri,
+        ref: snapshot.ref,
+        resolvedCommit: snapshot.resolvedCommit,
+        statusSignature: snapshot.statusSignature,
+      })),
+      reviewTimelineSnapshots: [...this.telemetry.timeline()],
+      fuelHistory: this.telemetry.fuelHistorySnapshot(),
+    };
+  }
+
+  private activeDiffStateForTests(): object | undefined {
+    const context = this.diffSurfaces.active();
+    if (!context) {
+      return undefined;
+    }
+    return {
+      mode: context.mode,
+      relativePath: context.relativePath,
+      baseScheme: context.baseUri.scheme,
+      modifiedScheme: context.modifiedUri.scheme,
+      contextLines: readSemanticOnlyOptions(this.hideComments).contextLines,
+      selectedChangeCount: context.semanticProjection?.selectedChangeIndexes.length,
+    };
+  }
+
+  private diffDocument(document: vscode.TextDocument): void {
+    if (!this.isEnabled()) {
+      return;
+    }
+    const target = this.resolveDocument(document);
+    if (!target) {
+      this.status.text = "IntentumDiff: unavailable";
+      this.clearDocumentVisuals(document.uri);
+      return;
+    }
+    if (isImageLikePath(target.relativePath)) {
+      // Never send a binary image to the text engine (the generic parser emits
+      // gigantic invalid output). Images are reviewed in the perceptual panel.
+      this.clearDocumentVisuals(document.uri);
+      return;
+    }
+    let session: ServerSession;
+    try {
+      session = this.serverSessions.ensure(target.folder);
+    } catch (error) {
+      this.status.text = "IntentumDiff: error";
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`LiveServer startup failed: ${message}`);
+      void this.notifyLiveServerFailure(target.folder, {
+        message,
+        toast: "IntentumDiff LiveServer could not start.",
+      });
+      return;
+    }
+    this.pendingLiveStatus.add(document.uri.toString());
+    this.refreshComparisonStatus();
+    session.client.diff(target.relativePath, document.getText(), { purpose: "live" });
+  }
+
+  private async notifyLiveServerFailure(
+    folder: vscode.WorkspaceFolder,
+    details: LiveServerFailureDetails,
+  ): Promise<void> {
+    const folderUri = folder.uri.toString();
+    for (const request of this.reviewRequests.values()) {
+      if (request.folderUri === folderUri) {
+        this.completeReviewRequest(folderUri, request.seq);
+      }
+    }
+    for (const requests of [this.incrementalReviewRequests, this.assetDiffRequests]) {
+      for (const [key, request] of requests) {
+        if (request.folderUri === folderUri) requests.delete(key);
+      }
+    }
+    this.streamedReviewFiles.delete(folderUri);
+    this.reviewSnapshots.delete(folderUri);
+    for (const [key, file] of this.reviewFiles) {
+      if (file.folderUri === folderUri && file.status === "pending") {
+        this.reviewFiles.set(key, { ...file, status: "error", error: details.message });
+      }
+    }
+    this.reviewFiles.set(reviewKey(folder.uri.toString(), ".intentumdiff-liveserver"), {
+      folderName: folder.name,
+      folderUri: folder.uri.toString(),
+      relativePath: ".intentumdiff-liveserver",
+      status: "error",
+      error: details.message,
+    });
+    this.updateReviewTree();
+    this.finishReviewIfIdle();
+
+    const warningKey = `${folder.uri.toString()}::${details.toast}::${details.suggestedExecutable ?? ""}`;
+    if (this.liveServerWarningKeys.has(warningKey)) {
+      return;
+    }
+    this.liveServerWarningKeys.add(warningKey);
+
+    const actions = ["Open Setting", "Show Output"];
+    const suggestedExecutable = details.suggestedExecutable;
+    const canUseSuggested = suggestedExecutable !== undefined && existsSync(suggestedExecutable);
+    if (canUseSuggested) {
+      actions.unshift("Use workspace .venv");
+    }
+    if (details.offerBundledFallback) {
+      actions.unshift("Use bundled engine");
+    }
+    const selected = await vscode.window.showWarningMessage(
+      details.toast,
+      { modal: false, detail: details.message },
+      ...actions,
+    );
+    if (selected === "Use bundled engine") {
+      // Clear intentumdiff.executable at every level it is set so the launch chooser falls
+      // through to the bundled native engine (issue 100 Phase C).
+      const config = vscode.workspace.getConfiguration("intentumdiff");
+      const inspected = config.inspect<string>("executable");
+      if (inspected?.workspaceFolderValue !== undefined) {
+        await config.update("executable", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      }
+      if (inspected?.workspaceValue !== undefined) {
+        await config.update("executable", undefined, vscode.ConfigurationTarget.Workspace);
+      }
+      if (inspected?.globalValue !== undefined) {
+        await config.update("executable", undefined, vscode.ConfigurationTarget.Global);
+      }
+      this.restartAll();
+      return;
+    }
+    if (selected === "Use workspace .venv" && suggestedExecutable) {
+      await vscode.workspace
+        .getConfiguration("intentumdiff")
+        .update("executable", suggestedExecutable, vscode.ConfigurationTarget.Global);
+      this.restartAll();
+      return;
+    }
+    if (selected === "Open Setting") {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "intentumdiff.executable");
+      return;
+    }
+    if (selected === "Show Output") {
+      this.output.show();
+    }
+  }
+
+  private handleDiff(folder: vscode.WorkspaceFolder, result: DiffResultEnvelope): void {
+    const diff = result.response.diff;
+    if (!diff) {
+      return;
+    }
+    const incrementalRequest = this.incrementalReviewRequests.get(requestKey(folder.uri.toString(), result.seq));
+    if (result.purpose === "review" && !incrementalRequest) {
+      return;
+    }
+    if (incrementalRequest) {
+      this.handleIncrementalReviewDiff(folder, result, incrementalRequest);
+      return;
+    }
+    const uri = vscode.Uri.file(path.join(folder.uri.fsPath, result.path));
+    this.applyDiffVisuals(uri, diff);
+    this.liveIntentContexts.set(uri.toString(), {
+      diff,
+      folderUri: folder.uri.toString(),
+      relativePath: result.path,
+    });
+    this.intentCodeLens.refresh();
+    this.intentInlayHints.refresh();
+    this.pendingLiveStatus.delete(uri.toString());
+    this.refreshComparisonStatus();
+    this.output.appendLine(JSON.stringify({ path: result.path, summary: summarizeDiff(diff) }, null, 2));
+  }
+
+  private handleIncrementalReviewDiff(
+    folder: vscode.WorkspaceFolder,
+    result: DiffResultEnvelope,
+    request: IncrementalReviewRequest,
+  ): void {
+    const key = requestKey(folder.uri.toString(), result.seq);
+    this.incrementalReviewRequests.delete(key);
+    const snapshotFile = this.reviewSnapshots.get(request.folderUri)
+      ?.files.find((file) => file.relativePath === request.relativePath);
+    if (
+      request.generation !== this.reviewGeneration
+      || !snapshotFile
+      || snapshotFile.stamp !== request.stamp
+      || snapshotFile.status !== request.status
+    ) {
+      return;
+    }
+    const diff = result.response.diff;
+    if (!diff) {
+      return;
+    }
+    const relativePath = request.relativePath;
+    const normalizedDiff = normalizeReviewDiffFilenames(diff, relativePath, request.status);
+    this.reviewFiles.set(reviewKey(request.folderUri, relativePath), {
+      folderName: folder.name,
+      folderUri: request.folderUri,
+      relativePath,
+      status: "ready",
+      diff: normalizedDiff,
+    });
+    this.telemetry.recordFuelTelemetry(request.folderUri, relativePath, normalizedDiff);
+    if (request.status !== "deleted") {
+      const uri = vscode.Uri.file(path.join(folder.uri.fsPath, relativePath));
+      this.applyDiffVisuals(uri, normalizedDiff);
+    }
+    this.updateReviewTree();
+    this.finishReviewIfIdle();
+    this.output.appendLine(JSON.stringify({
+      incrementalReview: {
+        path: relativePath,
+        summary: summarizeDiff(normalizedDiff),
+      },
+      workspace: folder.name,
+    }, null, 2));
+  }
+
+  private async tryCreateReviewSnapshot(folder: vscode.WorkspaceFolder): Promise<ReviewRefreshSnapshot | undefined> {
+    try {
+      return await createReviewSnapshot(folder);
+    } catch (error) {
+      this.output.appendLine(JSON.stringify({
+        reviewSnapshot: {
+          workspace: folder.name,
+          phase: "request",
+          error: messageOf(error),
+        },
+      }, null, 2));
+      return undefined;
+    }
+  }
+
+  private async recordReviewSnapshot(folder: vscode.WorkspaceFolder): Promise<void> {
+    const generation = this.reviewGeneration;
+    try {
+      const snapshot = await createReviewSnapshot(folder);
+      if (generation === this.reviewGeneration) {
+        this.reviewSnapshots.set(folder.uri.toString(), snapshot);
+      }
+    } catch (error) {
+      this.output.appendLine(JSON.stringify({
+        reviewSnapshot: {
+          workspace: folder.name,
+          error: messageOf(error),
+        },
+      }, null, 2));
+    }
+  }
+
+  private markReviewFilePending(
+    folder: vscode.WorkspaceFolder,
+    relativePath: string,
+    pendingMessage: string,
+  ): void {
+    this.reviewFiles.set(reviewKey(folder.uri.toString(), relativePath), {
+      folderName: folder.name,
+      folderUri: folder.uri.toString(),
+      relativePath,
+      status: "pending",
+      pendingMessage,
+    });
+  }
+
+  private removeReviewFile(folder: vscode.WorkspaceFolder, relativePath: string): void {
+    this.reviewFiles.delete(reviewKey(folder.uri.toString(), relativePath));
+    const uri = vscode.Uri.file(path.join(folder.uri.fsPath, relativePath));
+    this.clearDocumentVisuals(uri);
+  }
+
+  private async diffReviewFile(
+    folder: vscode.WorkspaceFolder,
+    file: ReviewRefreshFile,
+  ): Promise<void> {
+    const folderUri = folder.uri.toString();
+    try {
+      assertSafeRelativePath(file.relativePath);
+      if (isImageLikePath(file.relativePath)) {
+        const diff = imageAssetReviewDiff(folder, file);
+        this.reviewFiles.set(reviewKey(folderUri, file.relativePath), {
+          folderName: folder.name,
+          folderUri,
+          relativePath: file.relativePath,
+          status: "ready",
+          diff,
+        });
+        // The entry is ready now (the file IS a change); the perceptual comparison arrives
+        // separately so one slow image cannot hold up the rest of the review.
+        this.requestAssetDiff(folder, file.relativePath);
+        this.updateReviewTree();
+        this.finishReviewIfIdle();
+        this.output.appendLine(JSON.stringify({
+          imageAssetReview: {
+            path: file.relativePath,
+            status: file.status,
+            summary: summarizeDiff(diff),
+          },
+          workspace: folder.name,
+        }, null, 2));
+        return;
+      }
+      const session = this.serverSessions.ensure(folder);
+      const content = file.status === "deleted"
+        ? ""
+        : await readWorkingTreeFile(folder, file.relativePath);
+      for (const [key, request] of this.incrementalReviewRequests.entries()) {
+        if (request.folderUri === folderUri && request.relativePath === file.relativePath) {
+          this.incrementalReviewRequests.delete(key);
+        }
+      }
+      const seq = session.client.diff(file.relativePath, content, { purpose: "review" });
+      this.incrementalReviewRequests.set(requestKey(folderUri, seq), {
+        folderUri,
+        relativePath: file.relativePath,
+        seq,
+        generation: this.reviewGeneration,
+        stamp: file.stamp,
+        status: file.status,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.reviewFiles.set(reviewKey(folderUri, file.relativePath), {
+        folderName: folder.name,
+        folderUri,
+        relativePath: file.relativePath,
+        status: "error",
+        error: message,
+      });
+      this.updateReviewTree();
+    }
+  }
+
+  private async refreshReview(reason: string = "refresh"): Promise<void> {
+    if (!this.isEnabled()) {
+      this.status.text = "IntentumDiff: disabled";
+      return;
+    }
+    if (this.hasInFlightReviewWork()) {
+      this.pendingReviewReason = reason;
+      this.pendingReviewForceFull = true;
+      this.reviewRefreshQueued = true;
+      return;
+    }
+    this.reviewDispatching = true;
+    this.cancelPendingReviewRefresh();
+    this.setWorkspaceStatus("IntentumDiff: review queued");
+    try {
+      this.clearReview({ preserveRefreshState: true });
+      this.baseContentProvider.clear();
+      const dispatchGeneration = this.reviewGeneration;
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      if (folders.length === 0) {
+        this.status.text = "IntentumDiff: review clean";
+        this.output.appendLine("Semantic review: no workspace folders found.");
+        return;
+      }
+
+      this.setWorkspaceStatus(`IntentumDiff: reviewing 0/${folders.length}`);
+      for (const folder of folders) {
+        const folderUri = folder.uri.toString();
+        this.setReviewPlaceholder(
+          folder,
+          "Starting semantic review...",
+        );
+        try {
+          const snapshot = await this.tryCreateReviewSnapshot(folder);
+          if (this.reviewGeneration !== dispatchGeneration) {
+            return;
+          }
+          for (const file of snapshot?.files ?? []) {
+            this.markReviewFilePending(folder, file.relativePath, pendingMessageFor(file));
+          }
+          const session = this.serverSessions.ensure(folder);
+          const reviewStreaming = session.client.ready?.capabilities?.review_streaming === true;
+          const seq = session.client.review({
+            oldRef: readLiveServerSettings().ref,
+            ...(reviewStreaming ? { stream: true } : {}),
+          });
+          const key = requestKey(folderUri, seq);
+          this.reviewRequests.set(key, { folderUri, seq, snapshot });
+          this.setReviewPlaceholder(
+            folder,
+            `Review request sent (seq ${seq}); waiting for LiveServer response...`,
+          );
+          this.updateReviewTree();
+          this.reviewSlowTimers.set(key, setTimeout(() => {
+            this.reviewSlowTimers.delete(key);
+            if (!this.reviewRequests.has(key)) {
+              return;
+            }
+            this.setReviewPlaceholder(
+              folder,
+              `Still waiting for LiveServer review response (seq ${seq})...`,
+            );
+            this.output.appendLine(JSON.stringify({
+              reviewPending: {
+                workspace: folder.name,
+                seq,
+                message: "LiveServer has not returned a review response yet.",
+              },
+            }, null, 2));
+            this.updateReviewTree();
+          }, 15000));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.reviewFiles.set(reviewKey(folderUri, ".intentumdiff-review"), {
+            folderName: folder.name,
+            folderUri,
+            relativePath: ".intentumdiff-review",
+            status: "error",
+            error: message,
+          });
+        }
+      }
+      this.updateReviewTree();
+      this.finishReviewIfIdle();
+    } finally {
+      this.reviewDispatching = false;
+    }
+  }
+
+  private clearReview(options: { preserveRefreshState?: boolean } = {}): void {
+    if (options.preserveRefreshState !== true) {
+      this.cancelPendingReviewRefresh();
+    }
+    this.assetDiffRequests.clear();
+    this.reviewGeneration += 1;
+    for (const request of this.reviewRequests.values()) {
+      const session = this.serverSessions.get(request.folderUri);
+      if (session) {
+        session.client.cancel(request.seq);
+      }
+    }
+    this.reviewRequests.clear();
+    for (const request of this.incrementalReviewRequests.values()) {
+      const session = this.serverSessions.get(request.folderUri);
+      if (session) {
+        session.client.cancel(request.seq);
+      }
+    }
+    this.incrementalReviewRequests.clear();
+    this.streamedReviewFiles.clear();
+    for (const timer of this.reviewSlowTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reviewSlowTimers.clear();
+    this.reviewFiles.clear();
+    this.telemetry.clearFuelHistory();
+    this.reviewCrossFileEntries = [];
+    this.reviewSnapshots.clear();
+    if (!options.preserveRefreshState) this.reviewPanelPayload = undefined;
+    this.diffSurfaces.clear();
+    this.navigationIndexes.clear();
+    this.semanticLineHintCache.clear();
+    this.reviewTree.clear();
+    this.reviewDashboardProvider?.refresh();
+    this.emptyContentProvider.clear();
+    this.semanticOnlyContentProvider.clear();
+    this.updateEditorContext();
+  }
+
+  private async openReviewPanel(
+    argument: OpenReviewPayload | ReviewTreeNode | ReviewWebviewPayload | undefined,
+  ): Promise<void> {
+    const explicitPayload = normalizeOpenReviewPayload(argument as OpenReviewPayload | ReviewTreeNode | undefined);
+    const activeDiffTabPayload = explicitPayload ? undefined : this.activeDiffTabReviewPayload();
+    const payload = explicitPayload
+      ?? this.diffSurfaces.active()?.payload
+      ?? activeDiffTabPayload?.payload
+      ?? this.activeEditorReviewPayload()
+      ?? (activeDiffTabPayload?.sawDiff ? undefined : this.firstReadyReviewPayload());
+    if (!payload?.relativePath) {
+      const message = activeDiffTabPayload?.sawDiff
+        ? "IntentumDiff: this diff is not in the current semantic review. Refresh Semantic Review, then try again."
+        : "IntentumDiff: no reviewed file is available for the custom review panel.";
+      void vscode.window.showInformationMessage(message);
+      return;
+    }
+    try {
+      assertSafeRelativePath(payload.relativePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window.showWarningMessage(`IntentumDiff: cannot open custom review: ${message}`);
+      return;
+    }
+    const filePayload: OpenFileReviewPayload = { ...payload, relativePath: payload.relativePath };
+    this.reviewPanelPayload = filePayload;
+    const model = await this.buildReviewPanelModelForPayload(filePayload);
+    if (!model || this.reviewPanelPayload !== filePayload) {
+      return;
+    }
+    this.reviewPanelController?.open(model);
+    if (model.file.status === "pending") {
+      this.requestFullReview("open pending review panel");
+      return;
+    }
+    // Draft the AI release narrative in the background (opt-in); refresh the panel
+    // when it resolves. Non-blocking so the deterministic notes show immediately.
+    void this.attachReleaseNarrative(filePayload, model);
+  }
+
+  /**
+   * When the LLM explainer is enabled, draft a release narrative from the derived
+   * (privacy-safe) notes and re-open the panel with it — if the panel still shows
+   * this file. Never blocks the initial render.
+   */
+  private async attachReleaseNarrative(
+    payload: OpenFileReviewPayload,
+    model: ReturnType<typeof buildReviewPanelModel>,
+  ): Promise<void> {
+    if (!this.intentLlmExplainer?.isEnabled()) {
+      return;
+    }
+    const notes = buildReleaseNotes(model.diff);
+    const tokenSource = new vscode.CancellationTokenSource();
+    try {
+      const narrative = await this.intentLlmExplainer.draftReleaseNarrative(notes, tokenSource.token);
+      if (!narrative) {
+        return;
+      }
+      if (
+        this.reviewPanelPayload?.relativePath === payload.relativePath
+        && this.reviewPanelPayload?.folderUri === payload.folderUri
+      ) {
+        this.reviewPanelController?.open({ ...model, releaseNarrative: narrative });
+      }
+    } finally {
+      tokenSource.dispose();
+    }
+  }
+
+  private async openReviewPanelNativeDiff(mode: NativeDiffMode): Promise<void> {
+    if (!this.reviewPanelPayload) {
+      void vscode.window.showInformationMessage("IntentumDiff: no custom review panel is active.");
+      return;
+    }
+    await this.diffSurfaces.open(this.reviewPanelPayload, mode);
+  }
+
+  private async buildReviewPanelModelForPayload(
+    filePayload: OpenFileReviewPayload,
+  ): Promise<ReturnType<typeof buildReviewPanelModel> | undefined> {
+    const file = this.reviewFiles.get(reviewKey(filePayload.folderUri, filePayload.relativePath));
+    if (!file || file.status !== "ready" || !file.diff) {
+      const folderError = [".intentumdiff-review", ".intentumdiff-liveserver"]
+        .map(name => this.reviewFiles.get(reviewKey(filePayload.folderUri, name)))
+        .find(entry => entry?.status === "error");
+      const pendingFile = panelReviewFile({
+        folderName: path.basename(vscode.Uri.parse(filePayload.folderUri).fsPath),
+        folderUri: filePayload.folderUri, relativePath: filePayload.relativePath,
+      }, file, folderError, this.reviewSnapshots.has(filePayload.folderUri) && !this.hasInFlightReviewWork());
+      return buildReviewPanelModel(pendingFile, "", "", readLiveServerSettings().ref);
+    }
+    if (file.relativePath === ".intentumdiff-review") return undefined;
+    const folderUri = vscode.Uri.parse(filePayload.folderUri);
+    const workingUri = vscode.Uri.file(path.join(folderUri.fsPath, filePayload.relativePath));
+    const modifiedUri = await existingOrEmptyModifiedUri(
+      workingUri,
+      this.emptyContentProvider,
+      filePayload.folderUri,
+      filePayload.relativePath,
+    );
+    const ref = readLiveServerSettings().ref;
+    const baseUri = this.baseContentProvider.createUri({
+      folderUri: filePayload.folderUri,
+      ref,
+      relativePath: filePayload.relativePath,
+      cacheNonce: this.reviewSnapshots.get(filePayload.folderUri)?.resolvedCommit,
+    });
+    const contextLines = readReviewDiffContextLines();
+    if (isImageLikePath(filePayload.relativePath)) {
+      // The perceptual comparison is already on the review entry (or on its way there via the
+      // engine's asset_diff response); the panel renders what the engine returned.
+      return buildReviewPanelModel(file, "", "", ref, { contextLines });
+    }
+    const [baseDocument, modifiedDocument] = await Promise.all([
+      vscode.workspace.openTextDocument(baseUri),
+      vscode.workspace.openTextDocument(modifiedUri),
+    ]);
+    return buildReviewPanelModel(file, baseDocument.getText(), modifiedDocument.getText(), ref, { contextLines });
+  }
+
+  private activeEditorReviewPayload(): OpenFileReviewPayload | undefined {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document) {
+      return undefined;
+    }
+    const target = this.resolveDocument(document);
+    if (!target) {
+      return undefined;
+    }
+    return this.reviewPayloadForWorkspaceTarget(target);
+  }
+
+  private activeDiffTabReviewPayload(): { sawDiff: boolean; payload?: OpenFileReviewPayload } {
+    const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    if (!isTextDiffTabInput(input)) {
+      return { sawDiff: false };
+    }
+    const payload = this.reviewPayloadForUri(input.modified)
+      ?? this.reviewPayloadForUri(input.original);
+    return { sawDiff: true, payload };
+  }
+
+  private reviewPayloadForUri(uri: vscode.Uri | undefined): OpenFileReviewPayload | undefined {
+    if (!uri) {
+      return undefined;
+    }
+    if (uri.scheme === BASE_SCHEME) {
+      try {
+        const identity = decodeBaseIdentity(uri.query);
+        const target = this.resolveWorkspaceUri(vscode.Uri.parse(identity.folderUri));
+        if (!target) {
+          return undefined;
+        }
+        return this.reviewPayloadForWorkspaceTarget({
+          folder: target.folder,
+          relativePath: identity.relativePath,
+        });
+      } catch {
+        return undefined;
+      }
+    }
+    if (uri.scheme === SEMANTIC_BASE_SCHEME || uri.scheme === SEMANTIC_MODIFIED_SCHEME) {
+      try {
+        const identity = decodeSemanticOnlyIdentity(uri);
+        const target = this.resolveWorkspaceUri(vscode.Uri.parse(identity.folderUri));
+        if (!target) {
+          return undefined;
+        }
+        return this.reviewPayloadForWorkspaceTarget({
+          folder: target.folder,
+          relativePath: identity.relativePath,
+        });
+      } catch {
+        return undefined;
+      }
+    }
+    const context = this.diffSurfaces.get(uri.toString());
+    if (context) {
+      return context.payload;
+    }
+    const target = this.resolveWorkspaceLikeUri(uri);
+    return target ? this.reviewPayloadForWorkspaceTarget(target) : undefined;
+  }
+
+  private reviewPayloadForWorkspaceTarget(
+    target: { folder: vscode.WorkspaceFolder; relativePath: string },
+  ): OpenFileReviewPayload | undefined {
+    const file = this.reviewFiles.get(reviewKey(target.folder.uri.toString(), target.relativePath));
+    if (!file || file.status !== "ready" || !file.diff || file.relativePath === ".intentumdiff-review") {
+      return undefined;
+    }
+    return {
+      folderUri: target.folder.uri.toString(),
+      relativePath: target.relativePath,
+    };
+  }
+
+  private firstReadyReviewPayload(): OpenFileReviewPayload | undefined {
+    for (const file of this.reviewFiles.values()) {
+      if (file.status === "ready" && file.diff && file.relativePath !== ".intentumdiff-review") {
+        return {
+          folderUri: file.folderUri,
+          relativePath: file.relativePath,
+        };
+      }
+    }
+    return undefined;
+  }
+
+  private refreshReviewWebviews(): void {
+    this.reviewDashboardProvider?.refresh();
+    if (this.reviewPanelPayload) {
+      void this.refreshOpenReviewPanel();
+    }
+  }
+
+  private async refreshOpenReviewPanel(): Promise<void> {
+    if (!this.reviewPanelPayload) {
+      return;
+    }
+    const payload = this.reviewPanelPayload;
+    const generation = this.reviewGeneration;
+    const model = await this.buildReviewPanelModelForPayload(payload);
+    if (model && this.reviewPanelPayload === payload && this.reviewGeneration === generation) {
+      this.reviewPanelController?.refresh(model);
+    }
+  }
+
+  /**
+   * VS Code restores open editors across window reloads. A base diff tab whose
+   * left side is an untracked directory (a stale `.claude/`-style entry from before
+   * directories were filtered out of the review) re-opens and fails on every
+   * reload. Close those tabs on activation so the error does not keep reappearing.
+   */
+  private closeStaleBaseDirectoryTabs(): void {
+    try {
+      const groups = vscode.window.tabGroups;
+      if (!groups) {
+        return;
+      }
+      const stale: vscode.Tab[] = [];
+      for (const group of groups.all) {
+        for (const tab of group.tabs) {
+          const input = tab.input as { original?: unknown; modified?: unknown; uri?: unknown } | undefined;
+          const uris = [input?.original, input?.modified, input?.uri].filter(
+            (value): value is vscode.Uri => value instanceof vscode.Uri,
+          );
+          const isStaleDirectory = uris.some((uri) => {
+            if (uri.scheme !== BASE_SCHEME) {
+              return false;
+            }
+            try {
+              const { relativePath } = decodeBaseIdentity(uri.query);
+              return relativePath.endsWith("/") || relativePath.endsWith("\\");
+            } catch {
+              // decodeBaseIdentity now throws for directory paths (and any other
+              // malformed base query); a base tab that cannot decode is stale.
+              return true;
+            }
+          });
+          if (isStaleDirectory) {
+            stale.push(tab);
+          }
+        }
+      }
+      if (stale.length > 0) {
+        void groups.close(stale, true);
+        this.output.appendLine(`IntentumDiff: closed ${stale.length} stale base directory diff tab(s).`);
+      }
+    } catch (error) {
+      this.output.appendLine(`IntentumDiff: stale base tab cleanup skipped: ${messageOf(error)}`);
+    }
+  }
+
+  /** Resolve the intent-lens context for a diff document URI (base or modified). */
+  private intentLensContext(uri: vscode.Uri): IntentLensContext | undefined {
+    const context = this.diffSurfaces.get(uri.toString());
+    if (context) {
+      const side: IntentSide = uri.toString() === context.baseUri.toString() ? "base" : "modified";
+      return {
+        diff: context.diff,
+        mode: context.mode,
+        side,
+        folderUri: context.folderUri,
+        relativePath: context.relativePath,
+      };
+    }
+    // Fall back to the live diff so lenses appear on the working buffer itself.
+    const live = this.liveIntentContexts.get(uri.toString());
+    if (live) {
+      return {
+        diff: live.diff,
+        mode: "full",
+        side: "modified",
+        folderUri: live.folderUri,
+        relativePath: live.relativePath,
+      };
+    }
+    return undefined;
+  }
+
+  private workingUriFor(folderUri: string, relativePath: string): vscode.Uri {
+    return vscode.Uri.file(path.join(vscode.Uri.parse(folderUri).fsPath, relativePath));
+  }
+
+  private liveIntentContextFor(folderUri: string, relativePath: string): SemanticDiff | undefined {
+    return this.liveIntentContexts.get(this.workingUriFor(folderUri, relativePath).toString())?.diff;
+  }
+
+  /**
+   * CodeLens intent action: reveal the hunk and open a native Peek of the
+   * counterpart ("before"/"after") location when one exists; otherwise reveal
+   * and surface the derived category/risk.
+   */
+  private async peekIntent(args?: PeekIntentArgs): Promise<void> {
+    if (!args) {
+      return;
+    }
+    // Prefer an open diff editor (enables a native before/after Peek); otherwise
+    // fall back to the live diff on the working buffer.
+    const context = this.diffSurfaces.forFile(args.folderUri, args.relativePath);
+    const diff = context?.diff ?? this.liveIntentContextFor(args.folderUri, args.relativePath);
+    if (!diff) {
+      return;
+    }
+    const sourceUri = args.side === "base" && context
+      ? context.baseUri
+      : context?.modifiedUri ?? this.workingUriFor(args.folderUri, args.relativePath);
+    const sourcePosition = new vscode.Position(Math.max(args.line, 0), 0);
+    const group = (diff.change_groups ?? [])[args.groupIndex];
+    if (context) {
+      const otherSide: IntentSide = args.side === "base" ? "modified" : "base";
+      const counterpart = buildIntentLenses(diff, otherSide)
+        .find((lens) => lens.groupIndex === args.groupIndex);
+      if (counterpart) {
         const counterpartUri = otherSide === "base" ? context.baseUri : context.modifiedUri;
         await vscode.commands.executeCommand(
           "editor.action.showReferences",
