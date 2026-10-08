@@ -697,6 +697,7 @@ class PysdController implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (
           event.affectsConfiguration("intentumdiff.executable")
+          || event.affectsConfiguration("intentumdiff.liveServer.engine")
           || event.affectsConfiguration("intentumdiff.ref")
           || event.affectsConfiguration("intentumdiff.enabled")
           || event.affectsConfiguration("intentumdiff.debounceMs")
@@ -1371,6 +1372,7 @@ class PysdController implements vscode.Disposable {
         parseErrorCount: file.diff?.parse_errors?.length ?? 0,
         isStyleOnly: isStyleOnlyReviewDiff(file.diff),
         assetDiff: file.diff?.metadata?.asset_diff,
+        engineTelemetry: file.diff?.metadata?.engine_telemetry,
       })),
       comparisonStatus: this.status.text,
       comparisonStatusTooltip: this.status.tooltip,
@@ -1444,6 +1446,24 @@ class PysdController implements vscode.Disposable {
     folder: vscode.WorkspaceFolder,
     details: LiveServerFailureDetails,
   ): Promise<void> {
+    const folderUri = folder.uri.toString();
+    for (const request of this.reviewRequests.values()) {
+      if (request.folderUri === folderUri) {
+        this.completeReviewRequest(folderUri, request.seq);
+      }
+    }
+    for (const requests of [this.incrementalReviewRequests, this.assetDiffRequests]) {
+      for (const [key, request] of requests) {
+        if (request.folderUri === folderUri) requests.delete(key);
+      }
+    }
+    this.streamedReviewFiles.delete(folderUri);
+    this.reviewSnapshots.delete(folderUri);
+    for (const [key, file] of this.reviewFiles) {
+      if (file.folderUri === folderUri && file.status === "pending") {
+        this.reviewFiles.set(key, { ...file, status: "error", error: details.message });
+      }
+    }
     this.reviewFiles.set(reviewKey(folder.uri.toString(), ".intentumdiff-liveserver"), {
       folderName: folder.name,
       folderUri: folder.uri.toString(),
@@ -1452,6 +1472,7 @@ class PysdController implements vscode.Disposable {
       error: details.message,
     });
     this.updateReviewTree();
+    this.finishReviewIfIdle();
 
     const warningKey = `${folder.uri.toString()}::${details.toast}::${details.suggestedExecutable ?? ""}`;
     if (this.liveServerWarningKeys.has(warningKey)) {

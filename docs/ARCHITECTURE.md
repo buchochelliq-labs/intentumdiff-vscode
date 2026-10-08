@@ -2,14 +2,15 @@
 
 ## Topology
 
-The extension starts an external IntentumDiff CLI live server. The current runtime
-uses the thin Python API over the Rust engine; Rust owns semantic analysis and
-asset processing. The extension renders the engine's results.
+The extension starts the external Rust `intentumdiff-live-server` by default.
+Rust owns semantic analysis, protocol handlers and asset processing; the extension
+renders the engine's results. Legacy Python transport requires explicit
+`intentumdiff.liveServer.engine = "python"` selection.
 
 The VSIX contains the extension and review assets. It does not bundle Python,
 a native live-server binary, or parser components. Configure `intentumdiff.executable`
-when the external CLI is not on PATH. Optional native-launch support in the code
-allows future packaging work; it is not a bundled-runtime guarantee for 0.0.2.
+when the external Rust server is not on PATH. Its verified parser components must
+remain next to it in `wasm/`. There is no automatic Python fallback.
 
 ## Surfaces (native-first)
 

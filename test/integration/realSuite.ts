@@ -4,10 +4,12 @@ import * as path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import * as vscode from "vscode";
 import { waitForVisible } from "./desktopEvidence";
+import { liveDiffProbe } from "./liveDiffProbe";
+import { assertMeasuredWasmTelemetry } from "./telemetryAcceptance";
 
 interface Entry { relativePath: string; status: string; changeCount: number;
   assetDiff?: { status: string; artifacts: Record<string, string> };
-  parseErrorCount: number; isStyleOnly: boolean; groupKinds: string[]; }
+  parseErrorCount: number; isStyleOnly: boolean; groupKinds: string[]; engineTelemetry?: unknown; }
 async function waitFor(check: () => Promise<boolean>, label: string): Promise<void> {
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
@@ -65,8 +67,7 @@ export async function run(): Promise<void> {
     const beforePath = path.join(evidence, `before-${f.name}`);
     const afterPath = path.join(evidence, `after-${f.name}`);
     fs.writeFileSync(beforePath, f.old); fs.writeFileSync(afterPath, f.partial);
-    const raw = execFileSync(process.env.INTENTUMDIFF_TEST_CLI!,
-      ["diff", "--json", beforePath, afterPath], { encoding: "utf8", timeout: 60000 });
+    const raw = await liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.partial);
     const direct = JSON.parse(raw);
     assert.equal(direct.metadata.engine_owner, "rust");
     assert.equal(direct.metadata.semantic_contract, "rust_source_fallback_v1");
@@ -109,7 +110,14 @@ export async function run(): Promise<void> {
     await replace(f.valid.replace("2", "3"));
     await waitFor(async () => (await files()).some(x => x.relativePath === f.name &&
       x.status === "ready" && x.changeCount > 0 && x.parseErrorCount === 0), `${f.name} valid recovery`);
-    results.push({ file: f.name, partial, recovered: (await files()).find(x => x.relativePath === f.name) });
+    const recovered = (await files()).find(x => x.relativePath === f.name)!;
+    if (f.name === "edit.js") {
+      assertMeasuredWasmTelemetry(recovered.engineTelemetry, process.env.INTENTUMDIFF_TEST_RUNTIME_KIND === "native");
+      const state = await vscode.commands.executeCommand<{ fuelHistory: Record<string, number[]> }>("intentumdiff.test.getReviewState");
+      assert.ok(Object.entries(state?.fuelHistory ?? {}).some(([key, values]) =>
+        key.endsWith(f.name) && values.some(value => value > 0)), "Measured Wasm fuel must reach recorded history");
+    }
+    results.push({ file: f.name, partial, recovered });
   }
   // Exercise a tracked image through the same live server, never a fabricated manifest.
   fs.copyFileSync(path.join(assetFixtures, "after.png"), path.join(root, "sample.png"));

@@ -16,11 +16,11 @@ const BUNDLED = "C:/ext/native/intentumdiff-live-server.exe";
 test("explicit user executable always wins over the bundled native server", () => {
   assert.deepEqual(
     chooseLiveServerLaunch("C:/custom/intentumdiff-live-server.exe", "auto", BUNDLED),
-    { kind: "python" },
+    { kind: "native", executable: "C:/custom/intentumdiff-live-server.exe" },
   );
   assert.deepEqual(
     chooseLiveServerLaunch("/workspace/.venv/bin/intentumdiff", "native", BUNDLED),
-    { kind: "python" },
+    { kind: "native", executable: "/workspace/.venv/bin/intentumdiff" },
   );
 });
 
@@ -31,20 +31,20 @@ test("auto prefers the bundled native server when present", () => {
   });
 });
 
-test("auto without a bundle stays on the python engine", () => {
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined), { kind: "python" });
+test("auto without a bundle launches the external Rust server", () => {
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined), { kind: "native", executable: "intentumdiff-live-server" });
 });
 
 test("engine=python skips the bundle even when present", () => {
   assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "python", BUNDLED), { kind: "python" });
 });
 
-test("engine=native uses the bundle, degrades to python when missing", () => {
+test("engine=native uses the external Rust server when no bundle exists", () => {
   assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", BUNDLED), {
     kind: "native",
     executable: BUNDLED,
   });
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined), { kind: "python" });
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined), { kind: "native", executable: "intentumdiff-live-server" });
 });
 
 test("normalizeLiveServerEngine coerces unknown values to auto", () => {
@@ -161,3 +161,9 @@ test("the staging scripts copy the binary name the extension probes for", () => 
     );
   }
 });
+
+ test("missing external native server never suggests Python fallback", () => {
+ const details = enoentFailureDetails("intentumdiff-live-server", {kind:"native",userOverride:false}, undefined);
+ assert.match(details.message, /external Rust/);
+ assert.doesNotMatch(details.message, /python|\\.venv|Reinstall the IntentumDiff extension/i);
+ });
