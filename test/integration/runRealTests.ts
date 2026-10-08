@@ -28,8 +28,11 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.join(user, "User"), { recursive: true });
   fs.mkdirSync(workspace);
   fs.writeFileSync(path.join(user, "User", "settings.json"), JSON.stringify({
-    "intentumdiff.executable": cli, "intentumdiff.enabled": true,
-    "intentumdiff.liveServer.engine": runtimeKind,
+    // Native acceptance exercises the shipped defaults and external PATH lookup.
+    ...(runtimeKind === "python" ? {
+      "intentumdiff.executable": cli, "intentumdiff.liveServer.engine": "python",
+    } : {}),
+    "intentumdiff.enabled": true,
     "intentumdiff.intent.llm.enabled": false, "intentumdiff.schemas.fetchMode": "off",
     "intentumdiff.ref": "HEAD", "intentumdiff.debounceMs": 50,
     // Synthetic fixtures only: retain wire ordering to diagnose missing review responses.
@@ -56,6 +59,7 @@ async function main(): Promise<void> {
     extension_version: JSON.parse(fs.readFileSync(path.join(installed, "package.json"), "utf8")).version,
     extension_commit: process.env.GITHUB_SHA ?? "local", vscode_version: "1.138.0",
     runtime_kind: runtimeKind,
+    runtime_launch: runtimeKind === "native" ? "default engine and PATH" : "explicit Python compatibility",
     runtime_executable_sha256: createHash("sha256").update(fs.readFileSync(cli)).digest("hex"),
     native_server_commit: process.env.INTENTUMDIFF_TEST_NATIVE_SERVER_COMMIT ?? null,
     native_artifact_id: process.env.INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID ?? null,
@@ -72,6 +76,8 @@ async function main(): Promise<void> {
     launchArgs: [workspace, "--user-data-dir", user, "--extensions-dir", extensions,
       "--disable-workspace-trust", "--skip-welcome", "--remote-debugging-port=0"],
     extensionTestsEnv: { ELECTRON_RUN_AS_NODE: undefined,
+      PATH: runtimeKind === "native" ? `${path.dirname(cli)}${path.delimiter}${process.env.PATH ?? ""}` : process.env.PATH,
+      INTENTUMDIFF_TEST_RUNTIME_KIND: runtimeKind,
       INTENTUMDIFF_TEST_CLI: cli,
       INTENTUMDIFF_REAL_PROFILE: user,
       INTENTUMDIFF_CAPTURE_SET: captureSet,

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import * as vscode from "vscode";
 import { waitForVisible } from "./desktopEvidence";
+import { liveDiffProbe } from "./liveDiffProbe";
 
 interface Entry { relativePath: string; status: string; changeCount: number;
   assetDiff?: { status: string; artifacts: Record<string, string> };
@@ -65,8 +66,7 @@ export async function run(): Promise<void> {
     const beforePath = path.join(evidence, `before-${f.name}`);
     const afterPath = path.join(evidence, `after-${f.name}`);
     fs.writeFileSync(beforePath, f.old); fs.writeFileSync(afterPath, f.partial);
-    const raw = execFileSync(process.env.INTENTUMDIFF_TEST_CLI!,
-      ["diff", "--json", beforePath, afterPath], { encoding: "utf8", timeout: 60000 });
+    const raw = await liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.partial);
     const direct = JSON.parse(raw);
     assert.equal(direct.metadata.engine_owner, "rust");
     assert.equal(direct.metadata.semantic_contract, "rust_source_fallback_v1");

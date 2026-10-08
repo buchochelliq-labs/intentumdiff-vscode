@@ -142,3 +142,26 @@ Artifacts use `real-runtime-capabilities` and `real-runtime-languages-0` through
 Test sources and raw logs remain CI evidence; publish only reviewed documentation examples,
 media and public candidate identities. Git actions, all image modes and remaining transitions
 still need dedicated interaction evidence.
+
+
+## Native runtime candidate
+
+The current Linux x64 test artifact comes from [native-server run 37732823289](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37732823289).
+It is a CI candidate, not a published release. Run these commands from this checkout
+with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
+Python is used here to verify the download, not to run the extension's engine.
+
+```sh
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11530628841/zip > native-candidate.zip
+python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
+  --expected-archive-sha256 47c79db4207b0050c6770e32639d6dfa077eb0778f96e2ed08e5f78c4bd3905e \
+  --expected-server-commit f93af5a2e29cdee11e33b652738d95a1357d2035 \
+  --expected-core-commit 5209fb29d2b900e2b6bb0164f1d3b0a8ce42bcc5
+export PATH="$PWD/native-runtime:$PATH"
+```
+
+Keep the executable and adjacent `wasm/` directory together. Start VS Code from
+that environment, or set the trusted user setting `intentumdiff.executable` to
+the executable's absolute path. This candidate does not establish Windows,
+ARM64 or macOS native acceptance. Desktop before/after acceptance remains a
+separate gate from the native server's protocol tests.

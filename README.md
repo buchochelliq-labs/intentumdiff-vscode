@@ -59,7 +59,7 @@ never in `settings.json`.
 
 - **The external Rust runtime:** `intentumdiff-live-server` and its matching verified
   `wasm/` component directory. Python is not required by the default extension runtime.
-  For candidate testing, use the checksum-verified native CI artifact; keep the
+  For Linux x64 candidate testing, follow the [verified native installation steps](docs/BUILDING.md#native-runtime-candidate); keep the
   executable and its adjacent `wasm/` directory together.
 - VS Code 1.90 or newer
 - A workspace folder backed by git
