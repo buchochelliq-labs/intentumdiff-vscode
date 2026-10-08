@@ -138,7 +138,8 @@ for the rendered text review. A command returning does not prove its rendered re
 inspect each image before marking the capability covered. Existing clean
 profile, installed VSIX, real external engine, capture hash and provenance rules still apply.
 
-Artifacts use `real-runtime-capabilities` and `real-runtime-languages-0` through `-3` names.
+Artifacts use `real-runtime-{python,native}-capabilities` and
+`real-runtime-{python,native}-languages-0` through `-3` names.
 Test sources and raw logs remain CI evidence; publish only reviewed documentation examples,
 media and public candidate identities. Git actions, all image modes and remaining transitions
 still need dedicated interaction evidence.
@@ -146,17 +147,17 @@ still need dedicated interaction evidence.
 
 ## Native runtime candidate
 
-The current Linux x64 test artifact comes from [native-server run 37736649995](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37736649995).
+The current Linux x64 test artifact comes from [native-server run 37741938619](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37741938619).
 It is a CI candidate, not a published release. Run these commands from this checkout
 with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
 Python is used here to verify the download, not to run the extension's engine.
 
 ```sh
-gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11532147591/zip > native-candidate.zip
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11535405632/zip > native-candidate.zip
 python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
-  --expected-archive-sha256 f481369a9a5284ba5b3049bfa79b4a0cb02a57c87062b645e83ad0f07cdf90d1 \
-  --expected-server-commit 4a2455ab110e318fbc221f93f153d4cd4c821f66 \
-  --expected-core-commit 27dfafc0e60a54d097a29db80054c7eb9a52be9d
+  --expected-archive-sha256 3306f065557fd0a9abedce24c96404e033ac8c950a554e7f9b729f702661359f \
+  --expected-server-commit 53b3210e1454b1ef08e4036ec34f3998514d4eab \
+  --expected-core-commit dc49d8cb66e61f21a08cffa610866231b95165d4
 export PATH="$PWD/native-runtime:$PATH"
 ```
 
@@ -165,3 +166,10 @@ that environment, or set the trusted user setting `intentumdiff.executable` to
 the executable's absolute path. This candidate does not establish Windows,
 ARM64 or macOS native acceptance. Desktop before/after acceptance remains a
 separate gate from the native server's protocol tests.
+
+The capability test requires measured JavaScript parser fuel and recorded history
+after recovery. Native protocol tests also cover JSON and malformed JavaScript.
+Missing measurements must display as unavailable or unmetered, not a measured zero
+or a policy pass. The native candidate records successful parser process calls;
+failed-call telemetry and auxiliary-call accounting are not yet equivalent to
+the Python runtime. Explicit low-fuel requests must still fail visibly.

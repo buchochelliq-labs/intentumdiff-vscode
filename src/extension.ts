@@ -1372,6 +1372,7 @@ class PysdController implements vscode.Disposable {
         parseErrorCount: file.diff?.parse_errors?.length ?? 0,
         isStyleOnly: isStyleOnlyReviewDiff(file.diff),
         assetDiff: file.diff?.metadata?.asset_diff,
+        engineTelemetry: file.diff?.metadata?.engine_telemetry,
       })),
       comparisonStatus: this.status.text,
       comparisonStatusTooltip: this.status.tooltip,

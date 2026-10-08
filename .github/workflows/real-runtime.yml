@@ -66,13 +66,13 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_native.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11532147591/zip > .candidate-download/native.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11535405632/zip > .candidate-download/native.zip
           python scripts/verify_candidate_native.py .candidate-download/native.zip .candidate-native \
-            --expected-archive-sha256 f481369a9a5284ba5b3049bfa79b4a0cb02a57c87062b645e83ad0f07cdf90d1 \
-            --expected-server-commit 4a2455ab110e318fbc221f93f153d4cd4c821f66 \
-            --expected-core-commit 27dfafc0e60a54d097a29db80054c7eb9a52be9d
+            --expected-archive-sha256 3306f065557fd0a9abedce24c96404e033ac8c950a554e7f9b729f702661359f \
+            --expected-server-commit 53b3210e1454b1ef08e4036ec34f3998514d4eab \
+            --expected-core-commit dc49d8cb66e61f21a08cffa610866231b95165d4
           echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-native/intentumdiff-live-server" >> "$GITHUB_ENV"
-          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=11532147591" >> "$GITHUB_ENV"
+          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=11535405632" >> "$GITHUB_ENV"
           python - <<'PYTHON'
           import json, os
           from pathlib import Path
