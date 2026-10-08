@@ -57,13 +57,20 @@ export async function waitForVisible(selector: string, click = false, requireNoO
     // Read only glyphs wholly inside the native editor's scroll viewport.
     // DOM textContent alone would accept clipped/offscreen source.
     let visibleSource = "";
-    for (const line of element.querySelectorAll(".view-lines .view-line")) {
+    const sourceLines = [...element.querySelectorAll(".view-lines")].flatMap(container =>
+      [...container.querySelectorAll(".view-line")].sort((a, b) =>
+        a.getBoundingClientRect().top - b.getBoundingClientRect().top));
+    for (const line of sourceLines) {
       const viewport = line.closest(".monaco-scrollable-element");
       if (!viewport) continue;
       const bounds = viewport.getBoundingClientRect();
       const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
       let node;
       while ((node = walker.nextNode())) {
+        // Monaco renders inlay labels as injected text with DynamicCssRules
+        // classes. They are visible UI, not source characters; a hint can sit
+        // between two tokens in a wrapped SQL source line.
+        if (node.parentElement.closest('[class^="dyn-rule-"], [class*=" dyn-rule-"]')) continue;
         for (let index = 0; index < node.textContent.length; index++) {
           const glyph = document.createRange();
           glyph.setStart(node, index); glyph.setEnd(node, index + 1);
