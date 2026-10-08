@@ -37,7 +37,8 @@ The historical inventory workflow (`release-media-manifest-gate.yml`) checks the
 
 The current generic VSIX includes the compiled extension and UI assets. It does not
 bundle a Python interpreter, native engine or parser component set. Configure an external
-IntentumDiff executable for real-runtime testing. Future runtime bundling is separate work.
+Rust `intentumdiff-live-server` with matching verified components for real-runtime testing.
+Python transport is an explicit compatibility mode; runtime bundling is separate work.
 
 ## Standalone integration runner
 

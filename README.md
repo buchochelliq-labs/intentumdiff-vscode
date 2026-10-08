@@ -57,27 +57,26 @@ never in `settings.json`.
 
 ## Requirements
 
-- **The IntentumDiff engine.** The extension is a front end for the `intentumdiff`
-  command and needs it installed:
-
-  ```bash
-  pip install intentumdiff-python
-  ```
-
-  That is the whole installation — the Rust engine and all 78 language parsers are
-  inside that one package. Requires Python 3.12 or newer.
-
+- **The external Rust runtime:** `intentumdiff-live-server` and its matching verified
+  `wasm/` component directory. Python is not required by the default extension runtime.
+  For candidate testing, use the checksum-verified native CI artifact; keep the
+  executable and its adjacent `wasm/` directory together.
 - VS Code 1.90 or newer
 - A workspace folder backed by git
 
-If `intentumdiff` is not on your `PATH` — common when it lives in a virtual environment —
-point the extension at it with `intentumdiff.executable`.
+Put `intentumdiff-live-server` on your `PATH`, or set `intentumdiff.executable`
+to its absolute path. Missing native runtime is an error; the extension does not
+silently switch to Python.
+
+For an explicitly selected legacy Python runtime, set
+`intentumdiff.liveServer.engine` to `python` and install `intentumdiff-python`.
+That compatibility mode is tested separately from the native runtime.
 
 Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-started/**
 
 ## Install
 
-1. Install the engine — `pip install intentumdiff-python` (Python 3.12+)
+1. Install the verified external Rust runtime and its matching components as above.
 2. Install **IntentumDiff** from the VS Code Marketplace or Open VSX, extension ID
    `buchochelliq-labs.intentumdiff`
 

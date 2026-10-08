@@ -728,7 +728,7 @@
             "python"
           ],
           "default": "auto",
-          "description": "Which live-server engine to spawn when intentumdiff.executable is unset: 'auto' prefers the bundled native server when present, 'native' requires it (falls back to python with a warning if missing), 'python' always uses the Python CLI. An explicit intentumdiff.executable always wins."
+          "description": "'auto' and 'native' use the Rust live-server (external intentumdiff-live-server when no bundle exists), without Python fallback. 'python' explicitly selects the legacy Python CLI. An explicit intentumdiff.executable path always wins."
         },
         "intentumdiff.review.maxAutoRetries": {
           "type": "number",

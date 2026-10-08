@@ -85,18 +85,17 @@ export type LiveServerLaunch =
   | { kind: "native"; executable: string }
   | { kind: "python" };
 
-/** Pure launch chooser (#100 Phase C — native-by-default cutover): an EXPLICIT
- *  `intentumdiff.executable` always wins (users may point at their own binary); otherwise the
- *  trusted `intentumdiff.liveServer.engine` setting decides — "python" skips the bundle,
- *  "auto"/"native" use the bundled native server when present. With nothing bundled the python
- *  engine keeps working (a requested-native degrade is the caller's to surface). */
+/** Explicit executables win. Auto/native select Rust, including an external
+ *  server when no bundle is present. Python requires an explicit engine choice. */
 export function chooseLiveServerLaunch(
   rawExecutable: string,
   engine: LiveServerEngine,
   bundledPath: string | undefined,
 ): LiveServerLaunch {
   if (rawExecutable !== "intentumdiff") {
-    return { kind: "python" };
+    return engine === "python"
+      ? { kind: "python" }
+      : { kind: "native", executable: rawExecutable };
   }
   if (engine === "python") {
     return { kind: "python" };
@@ -104,7 +103,7 @@ export function chooseLiveServerLaunch(
   if (bundledPath) {
     return { kind: "native", executable: bundledPath };
   }
-  return { kind: "python" };
+  return { kind: "native", executable: "intentumdiff-live-server" };
 }
 
 /** What `ensure()` decided at spawn time — carried into failure handling so ENOENT advice
@@ -137,7 +136,7 @@ export function enoentFailureDetails(
   if (launch.userOverride) {
     const fix = launch.bundledPath !== undefined
       ? "Remove the 'intentumdiff.executable' setting to use the extension's bundled engine, or point it at an existing executable."
-      : "Point the 'intentumdiff.executable' setting at an existing executable, or remove it to use IntentumDiff from the workspace .venv.";
+      : "Point the 'intentumdiff.executable' setting at an existing executable.";
     return {
       message: `The configured IntentumDiff executable does not exist: ${executable}. ${fix} ${restart}`,
       toast: "IntentumDiff: the configured 'intentumdiff.executable' was not found.",
@@ -145,6 +144,12 @@ export function enoentFailureDetails(
     };
   }
   if (launch.kind === "native") {
+    if (!launch.bundledPath) {
+      return {
+        message: `Could not find the external Rust server '${executable}'. Install intentumdiff-live-server with its verified wasm components, or set 'intentumdiff.executable' to its absolute path. ${restart}`,
+        toast: "IntentumDiff: external Rust server not found.",
+      };
+    }
     return {
       message: `The bundled IntentumDiff engine is missing: ${executable}. Reinstall the IntentumDiff extension, or set 'intentumdiff.liveServer.engine' to 'python'. ${restart}`,
       toast: "IntentumDiff: the bundled engine is missing — reinstall the extension.",
