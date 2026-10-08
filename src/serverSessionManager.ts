@@ -72,9 +72,7 @@ export class ServerSessionManager {
     }
 
     const settings = settingsForFolder(folder);
-    // #100 Phase C: prefer the BUNDLED native live-server unless the user overrode the
-    // executable or forced engine=python. The native binary is a CLI drop-in and finds its
-    // parsers next to itself, so only the executable changes.
+    // Rust is the default external runtime. Python is explicit opt-in only.
     const rawExecutable = readLiveServerRawExecutable();
     const engine = readLiveServerEngine();
     const bundled = bundledLiveServerPath(this.host.extensionPath);
@@ -86,14 +84,11 @@ export class ServerSessionManager {
     };
     if (launch.kind === "native") {
       settings.executable = launch.executable;
-    } else if (engine === "native") {
-      this.host.output.appendLine(
-        "intentumdiff.liveServer.engine is 'native' but no bundled native server was found; using the python engine.",
-      );
     }
     const args = buildLiveServerArgs(folder.uri.fsPath, settings);
     this.host.trace(`spawn [engine=${launch.kind}] ${settings.executable} ${args.join(" ")}`);
     let transport: ProcessLineTransport;
+    const isCurrentSession = () => this.sessions.get(key)?.transport === transport;
     const client = new LiveServerClient({
       writeLine: (line) => {
         this.host.trace(`> ${line}`);
@@ -111,11 +106,19 @@ export class ServerSessionManager {
         },
         onStderr: (line) => this.host.trace(`stderr: ${line}`),
         onExit: (code, signal) => {
+          // disposeAll removes sessions before killing their processes. Ignore those exits,
+          // and delayed exits from a process which has already been replaced.
+          if (!isCurrentSession()) return;
           this.host.setStatusText("IntentumDiff: stopped");
           this.host.output.appendLine(`LiveServer exited: code=${code ?? "null"} signal=${signal ?? "null"}`);
           this.sessions.delete(key);
+          void this.host.onFailure(folder, {
+            message: `LiveServer exited unexpectedly: code=${code ?? "null"} signal=${signal ?? "null"}`,
+            toast: "IntentumDiff LiveServer stopped unexpectedly. Refresh the review to retry.",
+          });
         },
         onError: (error) => {
+          if (!isCurrentSession()) return;
           this.host.setStatusText("IntentumDiff: error");
           this.sessions.delete(key);
           const details = liveServerErrorDetails(error, settings, folder, launchContext);
@@ -176,10 +179,11 @@ export class ServerSessionManager {
   }
 
   disposeAll(): void {
-    for (const session of this.sessions.values()) {
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    for (const session of sessions) {
       session.transport.dispose();
     }
-    this.sessions.clear();
   }
 }
 

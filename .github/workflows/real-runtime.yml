@@ -4,6 +4,7 @@ on:
     paths:
       - 'test/integration/**'
       - 'scripts/*candidate_wheel.py'
+      - 'scripts/*candidate_native.py'
       - '.github/workflows/real-runtime.yml'
       - 'src/**'
       - 'package*.json'
@@ -16,9 +17,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        runtime: [python, native]
         capture: [capabilities, languages-0, languages-1, languages-2, languages-3]
     env:
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1"
+      INTENTUMDIFF_TEST_RUNTIME_KIND: ${{ matrix.runtime }}
       INTENTUMDIFF_CAPTURE_SET: ${{ matrix.capture }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -30,17 +33,19 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      # Python #97 four-platform run. Reuse the tested wheel, not a fresh build
+      # Python #101 release-profile four-platform run. Reuse the tested wheel, not a fresh build
       # against historical parser components. Expired/missing artifacts fail loudly.
       - name: Download and verify reviewed candidate wheel
+        if: matrix.runtime == 'python'
         env:
           GH_TOKEN: ${{ secrets.SPLIT_REPO_TOKEN || github.token }}
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_wheel.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/11407195708/zip > .candidate-download/wheel.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/11530894250/zip > .candidate-download/wheel.zip
           python scripts/verify_candidate_wheel.py .candidate-download/wheel.zip .candidate-wheels
       - name: Install external candidate wheel
+        if: matrix.runtime == 'python'
         run: |
           python -m venv .candidate-runtime
           .candidate-runtime/bin/pip install .candidate-wheels/*.whl
@@ -53,25 +58,53 @@ jobs:
               for key in ('python_commit', 'core_commit', 'wheel_sha256', 'artifact_id'):
                   env.write(f"INTENTUMDIFF_TEST_{key.upper()}={identity[key]}\n")
           PY
+      # Native server #10: exact tested release binary and identical parser components.
+      - name: Download and verify native candidate
+        if: matrix.runtime == 'native'
+        env:
+          GH_TOKEN: ${{ secrets.SPLIT_REPO_TOKEN || github.token }}
+        run: |
+          python -m unittest discover -s scripts -p test_verify_candidate_native.py
+          mkdir .candidate-download
+          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11535405632/zip > .candidate-download/native.zip
+          python scripts/verify_candidate_native.py .candidate-download/native.zip .candidate-native \
+            --expected-archive-sha256 3306f065557fd0a9abedce24c96404e033ac8c950a554e7f9b729f702661359f \
+            --expected-server-commit 53b3210e1454b1ef08e4036ec34f3998514d4eab \
+            --expected-core-commit dc49d8cb66e61f21a08cffa610866231b95165d4
+          echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-native/intentumdiff-live-server" >> "$GITHUB_ENV"
+          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=11535405632" >> "$GITHUB_ENV"
+          python - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          identity = json.loads(Path('.candidate-native/runtime-identity.json').read_text())
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f"INTENTUMDIFF_TEST_NATIVE_SERVER_COMMIT={identity['server_commit']}\n")
+              env.write(f"INTENTUMDIFF_TEST_CORE_COMMIT={identity['core_commit']}\n")
+          PYTHON
       - name: Build exact VSIX
         run: |
           npm ci
           npm run vsix
           echo "INTENTUMDIFF_TEST_VSIX=$PWD/intentumdiff-$(node -p 'require("./package.json").version').vsix" >> "$GITHUB_ENV"
+      - name: Install desktop test dependencies
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y xvfb scrot ffmpeg
       - name: Exercise installed extension bytes with real external engine
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb scrot ffmpeg
           xvfb-run -a -s '-screen 0 1440x1000x24' node out/test/integration/runRealTests.js
       - name: Retain actual evidence and logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: real-runtime-${{ matrix.capture }}
+          name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}
           include-hidden-files: true
           path: |
             artifacts/real-runtime/
             .candidate-wheels/*.json
             .candidate-wheels/*.txt
             .candidate-wheels/*.sha256
+            .candidate-native/*.json
+            .candidate-native/SHA256SUMS
           if-no-files-found: warn

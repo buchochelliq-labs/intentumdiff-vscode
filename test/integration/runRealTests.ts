@@ -15,6 +15,8 @@ async function main(): Promise<void> {
       !fs.existsSync(vsix) || !fs.existsSync(cli)) {
     throw new Error("Set INTENTUMDIFF_TEST_VSIX and INTENTUMDIFF_TEST_CLI to existing absolute artifact/executable paths");
   }
+  const runtimeKind = process.env.INTENTUMDIFF_TEST_RUNTIME_KIND ?? "python";
+  if (!["python", "native"].includes(runtimeKind)) throw new Error("Unknown runtime kind");
   const captureSet = process.env.INTENTUMDIFF_CAPTURE_SET ?? "capabilities";
   if (!/^(capabilities|languages-[0-3])$/u.test(captureSet)) throw new Error("Unknown capture set");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "intentumdiff-real-"));
@@ -26,9 +28,21 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.join(user, "User"), { recursive: true });
   fs.mkdirSync(workspace);
   fs.writeFileSync(path.join(user, "User", "settings.json"), JSON.stringify({
-    "intentumdiff.executable": cli, "intentumdiff.enabled": true,
+    // Native acceptance exercises the shipped defaults and external PATH lookup.
+    ...(runtimeKind === "python" ? {
+      "intentumdiff.executable": cli, "intentumdiff.liveServer.engine": "python",
+    } : {}),
+    "intentumdiff.enabled": true,
     "intentumdiff.intent.llm.enabled": false, "intentumdiff.schemas.fetchMode": "off",
     "intentumdiff.ref": "HEAD", "intentumdiff.debounceMs": 50,
+    // Synthetic fixtures only: retain wire ordering to diagnose missing review responses.
+    "intentumdiff.trace": true,
+    "editor.wordWrap": "on", "diffEditor.wordWrap": "on",
+    "diffEditor.hideUnchangedRegions.enabled": false,
+    "diffEditor.renderSideBySide": true,
+    "diffEditor.useInlineViewWhenSpaceIsLimited": false,
+    "editor.minimap.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
     "workbench.startupEditor": "none", "security.workspace.trust.enabled": false,
   }));
   const executable = await downloadAndUnzipVSCode({ version: "1.138.0" });
@@ -44,6 +58,11 @@ async function main(): Promise<void> {
     vsix_sha256: createHash("sha256").update(fs.readFileSync(vsix)).digest("hex"),
     extension_version: JSON.parse(fs.readFileSync(path.join(installed, "package.json"), "utf8")).version,
     extension_commit: process.env.GITHUB_SHA ?? "local", vscode_version: "1.138.0",
+    runtime_kind: runtimeKind,
+    runtime_launch: runtimeKind === "native" ? "default engine and PATH" : "explicit Python compatibility",
+    runtime_executable_sha256: createHash("sha256").update(fs.readFileSync(cli)).digest("hex"),
+    native_server_commit: process.env.INTENTUMDIFF_TEST_NATIVE_SERVER_COMMIT ?? null,
+    native_artifact_id: process.env.INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID ?? null,
     python_commit: process.env.INTENTUMDIFF_TEST_PYTHON_COMMIT ?? null,
     core_commit: process.env.INTENTUMDIFF_TEST_CORE_COMMIT ?? null,
     wheel_sha256: process.env.INTENTUMDIFF_TEST_WHEEL_SHA256 ?? null,
@@ -55,9 +74,12 @@ async function main(): Promise<void> {
   await runTests({ vscodeExecutablePath: executable, extensionDevelopmentPath: installed,
     extensionTestsPath: path.join(__dirname, captureSet === "capabilities" ? "realSuite.js" : "languageSuite.js"),
     launchArgs: [workspace, "--user-data-dir", user, "--extensions-dir", extensions,
-      "--disable-workspace-trust", "--skip-welcome"],
+      "--disable-workspace-trust", "--skip-welcome", "--remote-debugging-port=0"],
     extensionTestsEnv: { ELECTRON_RUN_AS_NODE: undefined,
+      PATH: runtimeKind === "native" ? `${path.dirname(cli)}${path.delimiter}${process.env.PATH ?? ""}` : process.env.PATH,
+      INTENTUMDIFF_TEST_RUNTIME_KIND: runtimeKind,
       INTENTUMDIFF_TEST_CLI: cli,
+      INTENTUMDIFF_REAL_PROFILE: user,
       INTENTUMDIFF_CAPTURE_SET: captureSet,
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1", INTENTUMDIFF_REAL_WORKSPACE: workspace,
       INTENTUMDIFF_REAL_INSTALLED: installed, INTENTUMDIFF_REAL_EVIDENCE: evidence },

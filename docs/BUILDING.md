@@ -37,7 +37,8 @@ The historical inventory workflow (`release-media-manifest-gate.yml`) checks the
 
 The current generic VSIX includes the compiled extension and UI assets. It does not
 bundle a Python interpreter, native engine or parser component set. Configure an external
-IntentumDiff executable for real-runtime testing. Future runtime bundling is separate work.
+Rust `intentumdiff-live-server` with matching verified components for real-runtime testing.
+Python transport is an explicit compatibility mode; runtime bundling is separate work.
 
 ## Standalone integration runner
 
@@ -73,8 +74,8 @@ bytes in VS Code's test host; test-only observation commands are enabled by that
 It does not run the source checkout as the extension or replace the real CLI with a stub.
 
 The `Packaged extension real-runtime acceptance` workflow pins the candidate wheel's
-Python/core commits and reuses the exact Linux wheel from Python #97's four-platform
-run 37448070098 (artifact 11407195708). Archive and wheel SHA-256 checks run before
+Python/core commits and reuses the exact Linux wheel from Python #98's four-platform
+run 37511241359 (artifact 11435893665). Archive and wheel SHA-256 checks run before
 installation; embedded tested commits must match. Parser provenance is retained with
 the captures. Missing or expired artifacts fail explicitly and require a reviewed
 replacement pin; the workflow never silently substitutes a different runtime.
@@ -114,7 +115,7 @@ Current legacy-format capture approval requires `python scripts/validate_release
 ### Language and capability capture batches
 
 The real-runtime workflow runs the existing acceptance journey plus four disjoint language
-batches against the same checksum-pinned #97 wheel. `languageExamples.json` contains the 74
+batches against the same checksum-pinned #98 wheel. `languageExamples.json` contains the 74
 public examples already used by the docs language gallery, with source-review expectations
 and caveats. Each example produces native-diff and custom-review PNGs. No parser override
 is imposed: the recorded `observed.language` is the runtime's actual automatic routing.
@@ -128,12 +129,47 @@ independent source expectation and observed status; a passing collection run is 
 correctness approval. All output and images require independent inspection before publication.
 
 The capability batch additionally captures Peek, semantic-only diff, expanded context,
-evidence drawer, review rail, dashboard and diagnostics. These are requested through actual
-extension commands, not fabricated webview state. A command returning does not prove its
-rendered result: inspect each image before marking the capability covered. Existing clean
+Evidence view, Intent view, dashboard and diagnostics. The current UI has Evidence and Intent
+tabs; the legacy drawer/rail commands have no corresponding rendered panels and are not
+captured as those capabilities.
+Peek and Evidence captures wait for visible DOM in the isolated Electron desktop. Language
+captures reject binary, empty and style-only results for these meaningful edits, then wait
+for the rendered text review. A command returning does not prove its rendered result:
+inspect each image before marking the capability covered. Existing clean
 profile, installed VSIX, real external engine, capture hash and provenance rules still apply.
 
-Artifacts use `real-runtime-capabilities` and `real-runtime-languages-0` through `-3` names.
+Artifacts use `real-runtime-{python,native}-capabilities` and
+`real-runtime-{python,native}-languages-0` through `-3` names.
 Test sources and raw logs remain CI evidence; publish only reviewed documentation examples,
 media and public candidate identities. Git actions, all image modes and remaining transitions
 still need dedicated interaction evidence.
+
+
+## Native runtime candidate
+
+The current Linux x64 test artifact comes from [native-server run 37741938619](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37741938619).
+It is a CI candidate, not a published release. Run these commands from this checkout
+with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
+Python is used here to verify the download, not to run the extension's engine.
+
+```sh
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11535405632/zip > native-candidate.zip
+python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
+  --expected-archive-sha256 3306f065557fd0a9abedce24c96404e033ac8c950a554e7f9b729f702661359f \
+  --expected-server-commit 53b3210e1454b1ef08e4036ec34f3998514d4eab \
+  --expected-core-commit dc49d8cb66e61f21a08cffa610866231b95165d4
+export PATH="$PWD/native-runtime:$PATH"
+```
+
+Keep the executable and adjacent `wasm/` directory together. Start VS Code from
+that environment, or set the trusted user setting `intentumdiff.executable` to
+the executable's absolute path. This candidate does not establish Windows,
+ARM64 or macOS native acceptance. Desktop before/after acceptance remains a
+separate gate from the native server's protocol tests.
+
+The capability test requires measured JavaScript parser fuel and recorded history
+after recovery. Native protocol tests also cover JSON and malformed JavaScript.
+Missing measurements must display as unavailable or unmetered, not a measured zero
+or a policy pass. The native candidate records successful parser process calls;
+failed-call telemetry and auxiliary-call accounting are not yet equivalent to
+the Python runtime. Explicit low-fuel requests must still fail visibly.

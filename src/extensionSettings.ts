@@ -41,7 +41,9 @@ export function settingsForFolder(folder: vscode.WorkspaceFolder): LiveServerSet
   const settings = readLiveServerSettings();
   return {
     ...settings,
-    executable: resolveExecutableForFolder(settings.executable, folder),
+    executable: readLiveServerEngine() === "python"
+      ? resolveExecutableForFolder(settings.executable, folder)
+      : settings.executable,
   };
 }
 

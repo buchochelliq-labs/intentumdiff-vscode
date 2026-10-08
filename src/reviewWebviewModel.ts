@@ -156,6 +156,8 @@ export interface ReviewDashboardFile {
 }
 
 export interface ReviewFuelDiagnosticsSummary {
+  measuredCalls: number;
+  measuredTotals: number;
   callCount: number;
   hotspotCount: number;
   peakFuel: number;
@@ -1116,7 +1118,7 @@ function dashboardTopbar(model: ReviewDashboardModel): string {
       ${dashboardSummaryPill("Groups", groupCount, "groups")}
       ${dashboardSummaryPill("Guardrails", summary.guardrailCount, summary.immutableCount > 0 ? "danger" : "warn")}
       ${dashboardSummaryPill("Raw", summary.semanticChangeCount, "raw")}
-      ${dashboardSummaryPill("Fuel peak", formatFuel(fuelSummary.peakFuel), fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
+      ${dashboardSummaryPill("Fuel peak", fuelMetric(fuelSummary.peakFuel, fuelSummary.measuredCalls, fuelSummary.callCount), fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
       ${dashboardSummaryPill("Hotspots", fuelSummary.hotspotCount, fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
       ${dashboardCommandPill(`Grouping: ${groupingLabel}`, "cycleGrouping", "grouping")}
       ${model.languages.map((item) => dashboardFilterPill(`${item.language} ${item.count}`, `language:${item.language}`, "language")).join("")}
@@ -1192,6 +1194,10 @@ function dashboardFilters(model: ReviewDashboardModel): string {
   </div>`;
 }
 
+function fuelMetric(value: number, measured: number, calls: number): string {
+  return measured > 0 ? formatFuel(value) : calls > 0 ? "Unmetered" : "No fuel measurement";
+}
+
 function dashboardFuelPanel(model: ReviewDashboardModel): string {
   const fuelFiles = model.files
     .filter((file) => hasFuelOrParserSignal(file))
@@ -1212,8 +1218,8 @@ function dashboardFuelPanel(model: ReviewDashboardModel): string {
         <p>Sorted by hotspots, peak fuel, then total fuel across the latest review refresh.</p>
       </div>
       <div class="dashboard-fuel-kpis">
-        <span><strong>${escapeHtml(formatFuel(summary.peakFuel))}</strong><small>peak</small></span>
-        <span><strong>${escapeHtml(formatFuel(summary.totalFuel))}</strong><small>total</small></span>
+        <span><strong>${escapeHtml(fuelMetric(summary.peakFuel, summary.measuredCalls, summary.callCount))}</strong><small>peak</small></span>
+        <span><strong>${escapeHtml(fuelMetric(summary.totalFuel, summary.measuredTotals, summary.callCount))}</strong><small>total</small></span>
         <span><strong>${summary.hotspotCount}</strong><small>hotspots</small></span>
       </div>
     </header>
@@ -1232,12 +1238,12 @@ function dashboardFuelRow(file: ReviewDashboardFile): string {
     ...summary.policyReasons,
     summary.parseErrorCount > 0 ? `${summary.parseErrorCount} parse error${summary.parseErrorCount === 1 ? "" : "s"}` : "",
     summary.fallback ? "parser fallback" : "",
-  ].filter(Boolean).join(", ") || "within policy";
+  ].filter(Boolean).join(", ") || (summary.policyExceeded ? "Fuel hotspot reported" : summary.measuredCalls === 0 ? fuelMetric(0, 0, summary.callCount) : summary.measuredCalls < summary.callCount ? "within policy for measured calls; other calls unmetered" : "within policy");
   return `<article class="dashboard-fuel-row ${tone}" data-fuel-file="${escapeHtml(file.id)}">
     <strong>${escapeHtml(file.relativePath)}</strong>
     <span>${escapeHtml(file.language ?? "unknown")}</span>
-    <span>${escapeHtml(formatFuel(summary.peakFuel))} peak</span>
-    <span>${escapeHtml(formatFuel(summary.totalFuel))} total</span>
+    <span>${escapeHtml(fuelMetric(summary.peakFuel, summary.measuredCalls, summary.callCount))} peak</span>
+    <span>${escapeHtml(fuelMetric(summary.totalFuel, summary.measuredTotals, summary.callCount))} total</span>
     <span title="${escapeHtml(reasons)}">${summary.hotspotCount} hotspots</span>
     ${sparkline}
   </article>`;
@@ -1259,6 +1265,8 @@ function fuelDiagnosticsSummary(
   const diagnostics = diagnosticsForDiff(diff, fuelPolicy);
   const policyReasons = uniqueStrings(diagnostics.calls.flatMap((call) => call.policyReasons));
   return {
+    measuredCalls: diagnostics.calls.filter(call => call.fuelConsumed !== undefined).length,
+    measuredTotals: diagnostics.calls.filter(call => (call.totalFuelConsumed ?? call.fuelConsumed) !== undefined).length,
     callCount: diagnostics.calls.length,
     hotspotCount: diagnostics.hotspots.length,
     peakFuel: diagnostics.calls.reduce((peak, call) => Math.max(peak, call.fuelConsumed ?? 0), 0),
@@ -1272,6 +1280,8 @@ function fuelDiagnosticsSummary(
 
 function aggregateFuelDiagnostics(files: ReviewDashboardFile[]): ReviewFuelDiagnosticsSummary {
   return files.reduce<ReviewFuelDiagnosticsSummary>((total, file) => ({
+    measuredCalls: total.measuredCalls + file.fuelDiagnostics.measuredCalls,
+    measuredTotals: total.measuredTotals + file.fuelDiagnostics.measuredTotals,
     callCount: total.callCount + file.fuelDiagnostics.callCount,
     hotspotCount: total.hotspotCount + file.fuelDiagnostics.hotspotCount,
     peakFuel: Math.max(total.peakFuel, file.fuelDiagnostics.peakFuel),
@@ -1281,6 +1291,8 @@ function aggregateFuelDiagnostics(files: ReviewDashboardFile[]): ReviewFuelDiagn
     policyExceeded: total.policyExceeded || file.fuelDiagnostics.policyExceeded,
     policyReasons: uniqueStrings([...total.policyReasons, ...file.fuelDiagnostics.policyReasons]),
   }), {
+    measuredCalls: 0,
+    measuredTotals: 0,
     callCount: 0,
     hotspotCount: 0,
     peakFuel: 0,
@@ -1858,10 +1870,11 @@ function diagnosticsPage(model: ReviewPanelModel): string {
   const diagnostics = diagnosticsForDiff(model.diff, DEFAULT_REVIEW_FUEL_POLICY);
   const peakFuel = diagnostics.calls.reduce((peak, call) => Math.max(peak, call.fuelConsumed ?? 0), 0);
   const totalFuel = diagnostics.calls.reduce((total, call) => total + (call.totalFuelConsumed ?? call.fuelConsumed ?? 0), 0);
-  const hasTelemetry = diagnostics.calls.length > 0 || diagnostics.hotspots.length > 0 || diagnostics.events.length > 0;
+  const measured = diagnostics.calls.filter(call => call.fuelConsumed !== undefined).length;
+  const measuredTotals = diagnostics.calls.filter(call => (call.totalFuelConsumed ?? call.fuelConsumed) !== undefined).length;
   const health = diagnostics.parseErrors.length > 0 || diagnostics.hotspots.length > 0 || diagnostics.fallback
     ? "Inspect"
-    : hasTelemetry ? "Normal" : "Not captured";
+    : measured > 0 ? (measured < diagnostics.calls.length ? "Partially measured" : "Normal") : diagnostics.calls.length > 0 ? "Unmetered" : "Not captured";
   return `<section class="review-page insight-page" data-review-page="diagnostics" aria-label="Diagnostics view">
       <div class="insight-layout diagnostics-product-page">
         <article class="insight-hero diagnostics-hero product-hero">
@@ -1876,8 +1889,8 @@ function diagnosticsPage(model: ReviewPanelModel): string {
         <section class="insight-card metric-strip diagnostics-metrics" aria-label="Fuel metrics">
           ${metricTile("Calls", diagnostics.calls.length)}
           ${metricTile("Hotspots", diagnostics.hotspots.length)}
-          ${metricTile("Peak fuel", formatFuel(peakFuel))}
-          ${metricTile("Total fuel", formatFuel(totalFuel))}
+          ${metricTile("Peak fuel", fuelMetric(peakFuel, measured, diagnostics.calls.length))}
+          ${metricTile("Total fuel", fuelMetric(totalFuel, measuredTotals, diagnostics.calls.length))}
         </section>
         <section class="insight-card fuel-timeline-card">
           <h3>Fuel timeline</h3>
@@ -1893,7 +1906,7 @@ function diagnosticsPage(model: ReviewPanelModel): string {
           <h3>Hotspots</h3>
           ${diagnostics.hotspots.length > 0
             ? `<div class="diagnostics-list">${diagnostics.hotspots.map(hotspotCard).join("")}</div>`
-            : `<p>No excessive-fuel hotspot crossed policy thresholds for this file.</p>`}
+            : `<p>${measured > 0 ? "No excessive-fuel hotspot reported for measured calls." : "No fuel measurement available to assess hotspot thresholds."}</p>`}
         </section>
       </div>
     </section>`;
@@ -1976,11 +1989,11 @@ function diagnosticTraceEvents(diff: SemanticDiff | undefined): DiagnosticTraceE
 }
 
 function fuelTimelineRow(call: FuelTelemetryCall, index: number, peakFuel: number): string {
-  const consumed = call.fuelConsumed ?? 0;
+  const consumed = call.fuelConsumed;
   const percent = call.fuelUsedPercent ?? (
-    call.fuelBudget && call.fuelBudget > 0 ? consumed / call.fuelBudget * 100 : undefined
+    consumed !== undefined && call.fuelBudget && call.fuelBudget > 0 ? consumed / call.fuelBudget * 100 : undefined
   );
-  const width = Math.max(4, Math.min(100, percent ?? (peakFuel > 0 ? consumed / peakFuel * 100 : 4)));
+  const width = Math.max(4, Math.min(100, percent ?? (peakFuel > 0 && consumed !== undefined ? consumed / peakFuel * 100 : 4)));
   const classes = [
     "fuel-row",
     call.status.includes("exhaust") || call.policyReasons.length > 0 ? "is-hot" : "",
@@ -1992,15 +2005,15 @@ function fuelTimelineRow(call: FuelTelemetryCall, index: number, peakFuel: numbe
     call.fuelPerLine !== undefined ? `${formatFuel(call.fuelPerLine)}/line` : "",
     call.fuelPerKb !== undefined ? `${formatFuel(call.fuelPerKb)}/KB` : "",
   ].filter(Boolean).join(" · ");
-  const policy = call.policyReasons.length > 0 ? call.policyReasons.join(", ") : "within policy";
+  const policy = call.policyReasons.length > 0 ? call.policyReasons.join(", ") : consumed === undefined ? "Unmetered" : "within policy";
   return `<article class="${classes}">
     <header>
       <strong>${escapeHtml(`${index + 1}. ${call.language} ${call.func}${filename}`)}</strong>
       <span>${escapeHtml(call.status)}</span>
     </header>
-    <div class="fuel-bar" style="--bar-width:${width.toFixed(1)}%"><i></i></div>
+    ${consumed === undefined ? "" : `<div class="fuel-bar" style="--bar-width:${width.toFixed(1)}%"><i></i></div>`}
     <footer>
-      <span>${escapeHtml(formatFuel(consumed))} fuel${call.callCount > 1 ? ` over ${call.callCount} calls` : ""}</span>
+      <span>${consumed === undefined ? "Unmetered" : `${escapeHtml(formatFuel(consumed))} fuel`}${call.callCount > 1 ? ` over ${call.callCount} calls` : ""}</span>
       <span>${percent !== undefined ? escapeHtml(`${percent.toFixed(percent < 10 ? 2 : 1)}% budget`) : "budget n/a"}</span>
       ${call.elapsedMs !== undefined ? `<span>${escapeHtml(formatMetric(call.elapsedMs))} ms</span>` : ""}
       <span>${escapeHtml(policy)}</span>
@@ -2095,8 +2108,7 @@ function metricTile(label: string, value: string | number): string {
 }
 
 function changeBar(label: string, value: number, kind: "insert" | "delete" | "change" | "semantic"): string {
-  const width = Math.max(4, Math.min(100, value * 12));
-  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong><i style="--bar-width:${width}%"></i></div>`;
+  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
 }
 
 function releaseNoteItems(lines: string[], emptyLabel: string): string {

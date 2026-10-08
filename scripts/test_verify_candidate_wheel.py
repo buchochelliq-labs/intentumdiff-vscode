@@ -11,12 +11,13 @@ import verify_candidate_wheel as candidate
 
 
 class CandidateWheelTests(unittest.TestCase):
-    def fixture(self, python_commit=candidate.PYTHON_COMMIT, wheel=b'test wheel'):
+    def fixture(self, python_commit=candidate.PYTHON_COMMIT, wheel=b'test wheel', profile='release'):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:
             archive.writestr(candidate.WHEEL, wheel)
             archive.writestr('evidence/python-tested-commit.txt', python_commit)
             archive.writestr('evidence/core-commit.txt', candidate.CORE_COMMIT)
+            archive.writestr('evidence/wheel-build-profile.txt', profile)
             archive.writestr('evidence/wasm_provenance.json', '{}')
             archive.writestr('evidence/wheels.sha256', 'fixture')
         return stream.getvalue()
@@ -46,6 +47,10 @@ class CandidateWheelTests(unittest.TestCase):
     def test_commit_mismatch(self):
         data = self.fixture(python_commit='wrong')
         self.check(data, hashlib.sha256(data).hexdigest(), 'unused', 'commit.txt mismatch')
+
+    def test_dev_profile_is_rejected(self):
+        data = self.fixture(profile='dev')
+        self.check(data, hashlib.sha256(data).hexdigest(), 'unused', 'release profile')
 
     def test_wheel_mismatch(self):
         data = self.fixture()

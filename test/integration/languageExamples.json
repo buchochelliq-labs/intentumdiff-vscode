@@ -212,13 +212,14 @@
       ".py",
       ".sql"
     ],
-    "old": "name: etl_job\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n",
-    "new": "name: etl_job\nparameters:\n  - name: env\n    default: prod\ntasks:\n  - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/ingest\n  - task_key: transform\n    depends_on:\n      - task_key: ingest\n    notebook_task:\n      notebook_path: /notebooks/transform\n",
-    "expected_summary": "As workflow YAML, add env parameter default prod and transform notebook task depending on ingest; preserve ingest task and etl_job name.",
+    "old": "# Databricks notebook source\nfrom pyspark.sql import functions as F\n\n# COMMAND ----------\nactive = spark.table(\"customers\").filter(F.col(\"active\") == True)\n",
+    "new": "# Databricks notebook source\nfrom pyspark.sql import functions as F\n\n# COMMAND ----------\nactive = spark.table(\"customers\").filter(F.col(\"active\") == True).select(\"id\", \"name\")\n",
+    "expected_summary": "Add a projection selecting id and name to the active-customer DataFrame; retain the source table and active filter.",
     "caveats": [
-      "Content is YAML workflow configuration, not Python notebook source despite filename notebook.py and language databricks.",
-      "Same source pair appears under databricks-workflow; routing must be investigated before counting this as notebook-language correctness evidence."
-    ]
+      "This Python source exported from a Databricks notebook routes through Python. Notebook markers are comments; this does not demonstrate notebook-specific cell semantics.",
+      "Databricks workflow YAML is covered separately by databricks-workflow."
+    ],
+    "expected_language": "python"
   },
   {
     "language": "databricks-workflow",
@@ -952,8 +953,9 @@
     "new": "SELECT\n    u.id,\n    u.name,\n    u.email,\n    COUNT(o.id) AS order_count\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.active = 1\nGROUP BY u.id, u.name, u.email\nORDER BY order_count DESC;\n",
     "expected_summary": "Alias users, LEFT JOIN orders, add COUNT(o.id) order_count, group by user columns, and order descending by order_count; preserve active-user filter.",
     "caveats": [
-      "Filename code.sql differs from advertised .tsql extension and the query uses broadly shared SQL syntax, so filename-based T-SQL selection is not demonstrated."
-    ]
+      "The .sql filename routes through SQL. This example demonstrates the observed SQL route, not distinct T-SQL parser selection; no language override is applied."
+    ],
+    "expected_language": "sql"
   },
   {
     "language": "tsx",

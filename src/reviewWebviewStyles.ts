@@ -541,7 +541,7 @@ export function styles(): string {
     .drawer-tab { width:100%; display:flex; justify-content:center; gap:8px; border:0; border-bottom:1px solid var(--line); padding:9px 12px; color:var(--bright-fg); background:var(--panel2); }
     .drawer-body { display:none; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px; padding:10px 12px; overflow:auto; max-height:136px; }
     .insight-page { padding:16px; overflow:auto; background:radial-gradient(circle at 88% 6%,rgba(79,214,255,.08),transparent 28%),linear-gradient(180deg,var(--bg),var(--bg)); }
-    .insight-layout { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,34%); gap:12px; align-content:start; max-width:1480px; width:100%; margin:0 auto; }
+    .insight-layout { min-height:0; align-self:start; display:grid; grid-auto-rows:max-content; grid-template-columns:minmax(0,1fr) minmax(280px,34%); gap:12px; align-content:start; max-width:1480px; width:100%; margin:0 auto; }
     .insight-hero,.insight-card,.insight-list { border:1px solid var(--line); border-radius:9px; background:linear-gradient(180deg,rgba(16,29,48,.94),rgba(8,18,31,.94)); box-shadow:0 14px 34px rgba(0,0,0,.18); }
     .insight-hero { grid-column:1 / -1; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:16px; align-items:center; padding:16px; }
     .insight-hero h2 { margin:0 0 6px; font-size:20px; line-height:1.18; color:var(--bright-fg-strong); }
@@ -579,11 +579,6 @@ export function styles(): string {
     .quiet-state strong { color:var(--green-fg); }
     .change-bars { display:grid; gap:9px; }
     .change-bar { position:relative; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding-bottom:10px; color:var(--soft-fg); }
-    .change-bar i { grid-column:1 / -1; display:block; width:var(--bar-width); height:6px; border-radius:999px; background:var(--cyan); box-shadow:0 0 16px rgba(79,214,255,.22); }
-    .change-bar-insert i { background:var(--green); }
-    .change-bar-delete i { background:var(--red); }
-    .change-bar-change i { background:var(--amber); }
-    .change-bar-semantic i { background:var(--cyan); }
     .diagnostics-product-page { grid-template-columns:minmax(0,1.4fr) minmax(300px,.8fr); }
     .fuel-timeline-card { grid-row:span 2; }
     .fuel-timeline { display:grid; gap:9px; }
@@ -790,7 +785,7 @@ export function styles(): string {
     body.vscode-light .fuel-sparkline i { background:linear-gradient(180deg,var(--cyan),var(--green)); }
     @media (max-width: 920px) {
       .dashboard-topbar { grid-template-columns:minmax(0,1fr); grid-template-areas:"title" "pills" "actions"; align-items:start; }
-      .dashboard-pills { flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
+      .dashboard-pills { flex-wrap:wrap; padding-bottom:2px; }
       .dashboard-actions { justify-content:flex-start; width:100%; }
       .dashboard-board { padding:0 42px; }
       .dashboard-app[data-left-pinned="true"] .dashboard-board { padding-left:42px; }
