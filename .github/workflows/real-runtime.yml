@@ -86,10 +86,13 @@ jobs:
           npm ci
           npm run vsix
           echo "INTENTUMDIFF_TEST_VSIX=$PWD/intentumdiff-$(node -p 'require("./package.json").version').vsix" >> "$GITHUB_ENV"
+      - name: Install desktop test dependencies
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y xvfb scrot ffmpeg
       - name: Exercise installed extension bytes with real external engine
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb scrot ffmpeg
           xvfb-run -a -s '-screen 0 1440x1000x24' node out/test/integration/runRealTests.js
       - name: Retain actual evidence and logs
         if: always()
