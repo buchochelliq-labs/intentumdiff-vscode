@@ -146,17 +146,17 @@ still need dedicated interaction evidence.
 
 ## Native runtime candidate
 
-The current Linux x64 test artifact comes from [native-server run 37732823289](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37732823289).
+The current Linux x64 test artifact comes from [native-server run 37736649995](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/37736649995).
 It is a CI candidate, not a published release. Run these commands from this checkout
 with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
 Python is used here to verify the download, not to run the extension's engine.
 
 ```sh
-gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11530628841/zip > native-candidate.zip
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/11532147591/zip > native-candidate.zip
 python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
-  --expected-archive-sha256 47c79db4207b0050c6770e32639d6dfa077eb0778f96e2ed08e5f78c4bd3905e \
-  --expected-server-commit f93af5a2e29cdee11e33b652738d95a1357d2035 \
-  --expected-core-commit 5209fb29d2b900e2b6bb0164f1d3b0a8ce42bcc5
+  --expected-archive-sha256 f481369a9a5284ba5b3049bfa79b4a0cb02a57c87062b645e83ad0f07cdf90d1 \
+  --expected-server-commit 4a2455ab110e318fbc221f93f153d4cd4c821f66 \
+  --expected-core-commit 27dfafc0e60a54d097a29db80054c7eb9a52be9d
 export PATH="$PWD/native-runtime:$PATH"
 ```
 

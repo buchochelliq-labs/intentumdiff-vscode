@@ -1,4 +1,4 @@
-"""Verify and extract the exact Python #100 Linux wheel used for desktop acceptance.
+"""Verify and extract the exact Python #101 release-profile Linux wheel used for desktop acceptance.
 
 Usage: python scripts/verify_candidate_wheel.py ARCHIVE OUTPUT_DIRECTORY
 The CI archive includes the tested synthetic merge SHA, not just the PR head SHA.
@@ -10,12 +10,12 @@ from pathlib import Path
 import sys
 import zipfile
 
-ARCHIVE_SHA256 = '9f3f63c54cde55b1e7e0cc55073eb20df28753098d215823510ba692a1b991e0'
+ARCHIVE_SHA256 = '1af9dff7c6a6bd81cb489aa536227ed34462f7769ee00e37825393e6a3be9952'
 WHEEL = 'dist/intentumdiff_python-0.0.2b1-py3-none-linux_x86_64.whl'
-WHEEL_SHA256 = '1919afa822f5e5bc9b3106d88a0e08c1795dbdd78da99662625f61e9d503faf5'
-PYTHON_COMMIT = 'd46fd0e8fb3c65bb9d77ab14c95ebcb7c5798d54'
+WHEEL_SHA256 = 'd170cfc1018a8c269ac13768c221de79fe6f7c069cd1a14232f30d4efafbfa81'
+PYTHON_COMMIT = 'acea09f11a4c278a1884eb882dcad14d3b8e72b9'
 CORE_COMMIT = '89c11a806b3f6368a3f502d77aa35698cdf38cba'
-ARTIFACT_ID = 11514272993
+ARTIFACT_ID = 11530894250
 
 
 def verify(archive_path, destination):
@@ -27,6 +27,8 @@ def verify(archive_path, destination):
                                    ('core-commit.txt', CORE_COMMIT)]:
             if archive.read('evidence/' + filename).decode().strip() != expected:
                 raise ValueError(f'Candidate {filename} mismatch')
+        if archive.read('evidence/wheel-build-profile.txt').decode().strip() != 'release':
+            raise ValueError('Candidate wheel must use release profile')
         wheel = archive.read(WHEEL)
         if hashlib.sha256(wheel).hexdigest() != WHEEL_SHA256:
             raise ValueError('Candidate wheel checksum mismatch')
@@ -35,11 +37,11 @@ def verify(archive_path, destination):
         destination.mkdir(parents=True, exist_ok=True)
         (destination / Path(WHEEL).name).write_bytes(wheel)
         for filename in ['wasm_provenance.json', 'wheels.sha256',
-                         'python-tested-commit.txt', 'core-commit.txt']:
+                         'python-tested-commit.txt', 'core-commit.txt', 'wheel-build-profile.txt']:
             (destination / filename).write_bytes(archive.read('evidence/' + filename))
     identity = dict(python_commit=PYTHON_COMMIT, core_commit=CORE_COMMIT,
                     wheel_sha256=WHEEL_SHA256, artifact_id=ARTIFACT_ID,
-                    archive_sha256=ARCHIVE_SHA256, workflow_run=37689207055)
+                    archive_sha256=ARCHIVE_SHA256, workflow_run=37730861529)
     (destination / 'runtime-identity.json').write_text(json.dumps(identity, indent=2) + '\n')
     print(json.dumps(identity))
 
