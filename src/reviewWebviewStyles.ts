@@ -259,7 +259,7 @@ export function styles(): string {
     .hunk-inline-editor textarea { min-height:72px; resize:vertical; border:1px solid var(--line); border-radius:5px; padding:7px; color:var(--text); background:rgba(2,6,23,.62); font:12px/1.45 var(--mono); tab-size:2; }
     .hunk-inline-editor .action { justify-self:end; margin:0 8px 8px; min-height:24px; padding:3px 8px; font-size:11px; }
     .diff-row { display:grid; grid-template-columns:var(--diff-grid); min-width:0; border-bottom:1px solid var(--soft-line); }
-    .diff-row code { white-space:pre; overflow:hidden; text-overflow:ellipsis; padding:3px 9px; min-height:22px; }
+    .diff-row code { white-space:pre-wrap; overflow:visible; overflow-wrap:anywhere; text-overflow:clip; padding:3px 9px; min-height:22px; }
     /* highlight.js token colours (Dark+ approximation; VS Code exposes no per-scope vars). The .hljs class carries no background so the diff cell tint shows through. */
     .diff-table .hljs-comment,.diff-table .hljs-quote { color:var(--vscode-descriptionForeground); font-style:italic; }
     .diff-table .hljs-keyword,.diff-table .hljs-selector-tag,.diff-table .hljs-literal,.diff-table .hljs-name,.diff-table .hljs-meta .hljs-keyword { color:var(--vscode-charts-blue); }
