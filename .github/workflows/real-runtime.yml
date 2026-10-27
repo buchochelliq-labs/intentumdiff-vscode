@@ -1,5 +1,6 @@
 name: Packaged extension real-runtime acceptance
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'test/integration/**'
