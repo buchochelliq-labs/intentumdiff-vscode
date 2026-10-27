@@ -419,7 +419,10 @@ export function buildDiffRows(
     }
     if (operation.type === "delete") {
       const next = operations[index + 1];
-      if (next?.type === "insert") {
+      if (
+        next?.type === "insert"
+        && shouldPairChangedLines(oldLines[operation.oldIndex], newLines[next.newIndex])
+      ) {
         rows.push({
           kind: "change",
           oldLine: operation.oldIndex + 1,
@@ -453,6 +456,34 @@ export function buildDiffRows(
     });
   }
   return collapseUninterestingRows(withRowIds(compactRows(rows)), contextLines);
+}
+
+export function shouldPairChangedLines(oldText: string, newText: string): boolean {
+  const oldTrimmed = oldText.trim();
+  const newTrimmed = newText.trim();
+  if (!oldTrimmed || !newTrimmed) {
+    return false;
+  }
+  if (oldTrimmed === newTrimmed) {
+    return true;
+  }
+
+  const tokens = (value: string): Set<string> =>
+    new Set(value.toLowerCase().match(/[\p{L}\p{N}_$]+/gu) ?? []);
+  const oldTokens = tokens(oldTrimmed);
+  const newTokens = tokens(newTrimmed);
+  if (oldTokens.size === 0 || newTokens.size === 0) {
+    return false;
+  }
+
+  let shared = 0;
+  for (const token of oldTokens) {
+    if (newTokens.has(token)) {
+      shared += 1;
+    }
+  }
+  const union = new Set([...oldTokens, ...newTokens]).size;
+  return shared > 0 && shared / union >= 0.25;
 }
 
 export type LineOperation =
