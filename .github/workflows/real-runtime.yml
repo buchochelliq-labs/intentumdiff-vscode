@@ -12,7 +12,39 @@ on:
 permissions:
   contents: read
 jobs:
+  # Each matrix leg must exercise the same VSIX bytes. Repackaging in ten
+  # different jobs yields distinct checksums even at the same source SHA.
+  package-vsix:
+    name: Package one candidate VSIX
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: '20'
+      - name: Build and verify one VSIX
+        run: |
+          npm ci
+          npm run vsix
+          vsix="intentumdiff-$(node -p 'require("./package.json").version').vsix"
+          test -f "$vsix"
+          entry=$(node -p 'require("./package.json").main.replace(/^[.][/]/, "")')
+          unzip -l "$vsix" | grep -F "extension/$entry"
+          sha256sum "$vsix" > candidate-vsix.sha256
+          sha256sum --check candidate-vsix.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rc-candidate-vsix
+          path: |
+            *.vsix
+            candidate-vsix.sha256
+          if-no-files-found: error
+
   acceptance:
+    needs: package-vsix
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -82,11 +114,22 @@ jobs:
               env.write(f"INTENTUMDIFF_TEST_NATIVE_SERVER_COMMIT={identity['server_commit']}\n")
               env.write(f"INTENTUMDIFF_TEST_CORE_COMMIT={identity['core_commit']}\n")
           PYTHON
-      - name: Build exact VSIX
+      - name: Compile integration harness
         run: |
           npm ci
-          npm run vsix
-          echo "INTENTUMDIFF_TEST_VSIX=$PWD/intentumdiff-$(node -p 'require("./package.json").version').vsix" >> "$GITHUB_ENV"
+          npm run compile
+      - name: Download one candidate VSIX
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: rc-candidate-vsix
+          path: .candidate-vsix
+      - name: Verify and use the exact packaged VSIX bytes
+        run: |
+          cd .candidate-vsix
+          sha256sum --check candidate-vsix.sha256
+          vsix="intentumdiff-$(node -p 'require("../package.json").version').vsix"
+          test -f "$vsix"
+          echo "INTENTUMDIFF_TEST_VSIX=$PWD/$vsix" >> "$GITHUB_ENV"
       - name: Install desktop test dependencies
         timeout-minutes: 10
         run: |
