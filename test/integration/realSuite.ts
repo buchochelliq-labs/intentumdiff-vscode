@@ -96,7 +96,7 @@ export async function run(): Promise<void> {
     const rejected = (await files()).find(x => x.relativePath === f.name)!;
     assert.ok(rejected.error?.includes(`${f.name}:`),
       `${f.name}: rejected review must retain the Rust failed-file diagnostic`);
-    assert.match(rejected.error, /incomplete|invalid/iu,
+    assert.match(rejected.error ?? "", /incomplete|invalid/iu,
       `${f.name}: rejected review must describe invalid source`);
     assert.equal(rejected.changeCount, 0,
       `${f.name}: rejected source must not advertise semantic changes`);
