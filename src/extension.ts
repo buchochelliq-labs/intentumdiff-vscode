@@ -1364,6 +1364,7 @@ class PysdController implements vscode.Disposable {
         folderUri: file.folderUri,
         relativePath: file.relativePath,
         status: file.status,
+        error: file.error,
         language: file.diff?.language,
         changeCount: file.diff?.changes?.length ?? 0,
         changeTypes: [...new Set((file.diff?.changes ?? []).map((change) => change.change_type))],
