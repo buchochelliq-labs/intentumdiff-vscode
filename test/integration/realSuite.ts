@@ -87,6 +87,20 @@ export async function run(): Promise<void> {
     );
     fs.writeFileSync(path.join(evidence, `${f.name}.incomplete-error.txt`), invalidDiagnostic);
 
+    // The installed extension must also surface the malformed edit as an
+    // error, never a "ready" review with manufactured empty/style-only edits.
+    await replace(f.invalid);
+    await waitFor(async () => (await files()).some(x =>
+      x.relativePath === f.name && x.status === "error"),
+    `${f.name} incomplete editor review must fail closed`);
+    const rejected = (await files()).find(x => x.relativePath === f.name)!;
+    assert.equal(rejected.changeCount, 0,
+      `${f.name}: rejected source must not advertise semantic changes`);
+    assert.equal(rejected.isStyleOnly, false,
+      `${f.name}: rejected source must not advertise style equivalence`);
+    fs.writeFileSync(path.join(evidence, `${f.name}.incomplete-review.json`),
+      JSON.stringify(rejected, null, 2));
+
     // Use valid sources for installed-UI review and recovery checks. The
     // actual Rust result must contain semantic changes, not style/fallback.
     const raw = await liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.partial);
