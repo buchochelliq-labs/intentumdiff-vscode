@@ -2387,6 +2387,16 @@ class PysdController implements vscode.Disposable {
       return false;
     }
     this.recordReviewFailure(message, code);
+    // A failed whole-commit review cannot leave changed files stranded as
+    // pending. Rust emits one typed request error, not a per-file response;
+    // every outstanding file in this review is unverified, not a success.
+    for (const [fileKey, file] of this.reviewFiles) {
+      if (file.folderUri === folder.uri.toString()
+          && file.status === "pending"
+          && file.relativePath !== ".intentumdiff-review") {
+        this.reviewFiles.set(fileKey, { ...file, status: "error", error: message });
+      }
+    }
     this.completeReviewRequest(folder.uri.toString(), seq);
     this.reviewFiles.set(reviewKey(folder.uri.toString(), ".intentumdiff-review"), {
       folderName: folder.name,
