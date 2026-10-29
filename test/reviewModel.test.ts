@@ -9,6 +9,7 @@ import {
   resolveReviewFileGroupingMode,
   schemaCompactDescription,
   sortReviewFiles,
+  shouldInvalidateOnCommitReviewFailure,
   summarizeReview,
   summarizeReviewWithCrossFile,
   tooltipForReviewEntry,
@@ -40,6 +41,31 @@ const guardrailFile: ReviewFile = {
     }],
   },
 };
+
+test("failed commit review invalidates pending and provisional streamed files only", () => {
+  const folderUri = "file:///repo";
+  const file: ReviewFile = {
+    folderName: "repo", folderUri, relativePath: "edit.py", status: "pending",
+  };
+  const streamed = new Set(["streamed.py"]);
+  assert.equal(shouldInvalidateOnCommitReviewFailure(file, folderUri, streamed), true);
+  assert.equal(shouldInvalidateOnCommitReviewFailure(
+    { ...file, status: "ready", relativePath: "streamed.py" }, folderUri, streamed,
+  ), true);
+  // A separately completed file is not part of the failed whole-commit request.
+  assert.equal(shouldInvalidateOnCommitReviewFailure(
+    { ...file, status: "ready" }, folderUri, streamed,
+  ), false);
+  assert.equal(shouldInvalidateOnCommitReviewFailure(
+    { ...file, status: "error" }, folderUri, streamed,
+  ), false);
+  assert.equal(shouldInvalidateOnCommitReviewFailure(
+    { ...file, folderUri: "file:///other" }, folderUri, streamed,
+  ), false);
+  assert.equal(shouldInvalidateOnCommitReviewFailure(
+    { ...file, relativePath: ".intentumdiff-review" }, folderUri, streamed,
+  ), false);
+});
 
 test("review entries prioritize guardrails before refactorings and changes", () => {
   const entries = reviewEntriesForFile({
