@@ -45,6 +45,16 @@ export interface ReviewFile {
   skippedReason?: string;
 }
 
+/** A failed whole-commit review cannot certify pending files or provisional
+ * streamed file results from that same request. Independent ready reviews survive. */
+export function shouldInvalidateOnCommitReviewFailure(
+  file: ReviewFile, folderUri: string, streamedPaths: ReadonlySet<string>,
+): boolean {
+  return file.folderUri === folderUri && file.relativePath !== ".intentumdiff-review"
+    && (file.status === "pending"
+      || (file.status === "ready" && streamedPaths.has(file.relativePath)));
+}
+
 export type ReviewFileGroupingMode =
   | "auto"
   | "none"
