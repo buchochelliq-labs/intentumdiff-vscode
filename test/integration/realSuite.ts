@@ -7,7 +7,7 @@ import { waitForVisible } from "./desktopEvidence";
 import { liveDiffProbe } from "./liveDiffProbe";
 import { assertMeasuredWasmTelemetry } from "./telemetryAcceptance";
 
-interface Entry { relativePath: string; status: string; changeCount: number;
+interface Entry { relativePath: string; status: string; changeCount: number; error?: string;
   assetDiff?: { status: string; artifacts: Record<string, string> };
   parseErrorCount: number; isStyleOnly: boolean; groupKinds: string[]; engineTelemetry?: unknown; }
 async function waitFor(check: () => Promise<boolean>, label: string): Promise<void> {
@@ -94,6 +94,10 @@ export async function run(): Promise<void> {
       x.relativePath === f.name && x.status === "error"),
     `${f.name} incomplete editor review must fail closed`);
     const rejected = (await files()).find(x => x.relativePath === f.name)!;
+    assert.ok(rejected.error?.includes(`${f.name}:`),
+      `${f.name}: rejected review must retain the Rust failed-file diagnostic`);
+    assert.match(rejected.error, /incomplete|invalid/iu,
+      `${f.name}: rejected review must describe invalid source`);
     assert.equal(rejected.changeCount, 0,
       `${f.name}: rejected source must not advertise semantic changes`);
     assert.equal(rejected.isStyleOnly, false,
