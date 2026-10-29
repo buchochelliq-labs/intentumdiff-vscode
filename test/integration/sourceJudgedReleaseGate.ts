@@ -77,21 +77,75 @@ function assertClojure(oldSource: string, newSource: string, diff: Diff): void {
   "new multiply must be a single named-entity ADDITION");
 }
 
+// Independent source oracle for the five suppressed semantic edits in Core #159.
+// A broad gallery addition can mask missing edits; probe an isolated single
+// source change and require a meaningful diff anchored to its exact token.
+type IsolatedEdit = { before: string; after: string; line: string; token: string };
+const isolatedEdits: Record<string, IsolatedEdit> = {
+  php: {
+    before: "function add($a, $b) {",
+    after: "function add(int $a, int $b): int {",
+    line: "function add(int $a, int $b): int {", token: "int $a",
+  },
+  delphi: {
+    before: "function Add(A, B: Integer): Integer;",
+    after: "function Add(const A, B: Integer): Integer;",
+    line: "function Add(const A, B: Integer): Integer;", token: "const",
+  },
+  lua: {
+    before: "function greet(name)",
+    after: "local function greet(name)",
+    line: "local function greet(name)", token: "local",
+  },
+  qsharp: {
+    before: "operation SayHello() : Unit {",
+    after: "operation SayHello(name : String) : Unit {",
+    line: "operation SayHello(name : String) : Unit {", token: "name : String",
+  },
+  m: {
+    before: "in\n    FilteredRows\n",
+    after: "in\n    Source\n",
+    line: "    Source", token: "Source",
+  },
+};
+
 export async function assertSourceJudgedReleaseCase(
   executable: string, repository: string, relativePath: string,
   example: { language: string; old: string; new: string }, evidence: string,
 ): Promise<void> {
-  if (example.language !== "assemblyscript" && example.language !== "clojure") return;
-  const raw = await liveDiffProbe(executable, repository, relativePath, example.new);
-  // Retain full native/Python public wire evidence even when assertions fail.
-  fs.writeFileSync(path.join(evidence, `source-judged-${example.language}.json`), raw);
+  const isolated = isolatedEdits[example.language];
+  if (!isolated && example.language !== "assemblyscript" && example.language !== "clojure") return;
+  let probedSource = example.new;
+  if (isolated) {
+    const parts = example.old.split(isolated.before);
+    assert.equal(parts.length, 2, example.language + ": isolated source oracle must occur exactly once");
+    probedSource = parts.join(isolated.after);
+  }
+  const raw = await liveDiffProbe(executable, repository, relativePath, probedSource);
+  // Retain full native/Python public wire evidence when an assertion fails.
+  fs.writeFileSync(path.join(evidence, "source-judged-" + example.language + ".json"), raw);
   const diff = JSON.parse(raw) as Diff;
   assert.equal(diff.language, example.language);
   assert.deepEqual(diff.parse_errors, []);
   assert.equal(diff.is_fallback, false);
-  assert.equal(diff.has_semantic_changes, true);
-  assert.equal(diff.is_style_only, false);
-  assert.ok(Array.isArray(diff.changes) && Array.isArray(diff.change_groups));
-  if (example.language === "assemblyscript") assertAssemblyscript(example.old, example.new, diff);
-  else assertClojure(example.old, example.new, diff);
+  assert.equal(diff.has_semantic_changes, true,
+    example.language + ": independently meaningful source edit was lost");
+  assert.equal(diff.is_style_only, false,
+    example.language + ": semantic source edit was incorrectly reduced to style only");
+  assert.ok(Array.isArray(diff.changes) && diff.changes.length > 0
+    && Array.isArray(diff.change_groups), example.language + ": no certified semantic changes");
+  if (isolated) {
+    const lines = probedSource.split("\n");
+    const row = lines.findIndex(line => line.trim() === isolated.line.trim());
+    assert.ok(row >= 0, example.language + ": missing exact source oracle line");
+    const col = lines[row].indexOf(isolated.token);
+    assert.ok(col >= 0, example.language + ": missing exact changed token");
+    assert.ok(diff.changes.some(change => covers(change.new_node,
+      { line: row, col }, isolated.token.length)),
+    example.language + ": semantic change must anchor the changed source token");
+  } else if (example.language === "assemblyscript") {
+    assertAssemblyscript(example.old, example.new, diff);
+  } else {
+    assertClojure(example.old, example.new, diff);
+  }
 }
