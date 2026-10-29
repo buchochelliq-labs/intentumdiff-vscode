@@ -12,6 +12,19 @@ on:
 permissions:
   contents: read
 jobs:
+  candidate-identity:
+    name: Verify Python/native parser identity parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Test and enforce immutable wheel/native provenance equality
+        run: |
+          python3 -m unittest discover -s scripts -p test_verify_candidate_pair.py
+          python3 scripts/verify_candidate_pair.py
+
   # Each matrix leg must exercise the same VSIX bytes. Repackaging in ten
   # different jobs yields distinct checksums even at the same source SHA.
   package-vsix:
@@ -44,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   acceptance:
-    needs: package-vsix
+    needs: [package-vsix, candidate-identity]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
