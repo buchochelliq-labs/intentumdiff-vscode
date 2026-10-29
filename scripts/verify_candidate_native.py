@@ -9,9 +9,9 @@ import stat
 import tarfile
 import zipfile
 
-COMPONENT_WHEEL_SHA256 = '57532947a3ee5d4c5af9a3943f4f9e562df7084f6f04f3cd76e0c9bb9b0830e6'
-COMPONENT_CORE_COMMIT = 'a7a954bb875d73c132b8d2df6ddb5e3cedddd7a2'
-COMPONENT_PYTHON_COMMIT = 'bf422bf4983cfadb5a95835a8f37af389d0a2a7b'
+COMPONENT_WHEEL_SHA256 = '46ee9a9e326a76d27ede9891d7fe4501c6e2f25ac0728c0fd4cd3c7c4350e9d9'
+COMPONENT_CORE_COMMIT = 'e766f9b8ae842cb2168cd9142f8a3019a8961255'
+COMPONENT_PYTHON_COMMIT = 'ce67e79d444c0d4d70f57ec96b04b312c0154272'
 TARBALL = 'intentumdiff-live-server-linux-x64.tar.gz'
 ROOT = 'intentumdiff-live-server'
 
@@ -110,9 +110,9 @@ def verify(archive_path, destination, *, expected_archive_sha256,
     if (components != provenance['components'] or components['wheel_sha256'] != COMPONENT_WHEEL_SHA256
             or components['component_core_commit'] != COMPONENT_CORE_COMMIT
             or components['python_commit'] != COMPONENT_PYTHON_COMMIT
-            or components.get('artifact_id') != 12886528378
-            or components.get('workflow_run') != 40842662778
-            or components.get('archive_sha256') != '98efe82e76f74baa6e5a341349cf26369f1da20625db9986177a646216037b6b'):
+            or components.get('artifact_id') != 12912183858
+            or components.get('workflow_run') != 40900875287
+            or components.get('archive_sha256') != 'b8c0b724966393c07488196c7887c4a34849862f4cc12ba276b93b7b1fdecefe'):
         raise ValueError('Component provenance mismatch')
     wasm = json.loads(members['wasm/wasm_provenance.json'])
     artifacts = wasm['artifacts']
