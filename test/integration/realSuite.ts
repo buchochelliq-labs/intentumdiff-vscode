@@ -77,7 +77,7 @@ export async function run(): Promise<void> {
       liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.invalid),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /"code":"native_parse_incomplete"/u);
+        assert.match(error.message, /"code"\s*:\s*"native_parse_incomplete"/u);
         assert.ok(error.message.includes(`${f.name}:`),
           `${f.name}: missing failed-file provenance`);
         invalidDiagnostic = error.message;
