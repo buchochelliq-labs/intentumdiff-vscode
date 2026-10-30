@@ -10,12 +10,12 @@ from pathlib import Path
 import sys
 import zipfile
 
-ARCHIVE_SHA256 = '667cce36e73601ebd6dc6b53a3923680b7cb181192515a95725a8770c2c99e5b'
+ARCHIVE_SHA256 = '0973dd0706196573c6ad0aa6db039c680ff4b42c4f7f4d68e518e02bc2add613'
 WHEEL = 'dist/intentumdiff_python-0.0.2b1-py3-none-linux_x86_64.whl'
-WHEEL_SHA256 = 'da662325a905911e30ec1781324ec8d9de338beeaf456a6cc3e304a8fd34da92'
-PYTHON_COMMIT = '7beef6aef90dad2b5d199520e420e6d562a2de4c'
+WHEEL_SHA256 = 'df6c0fb4d0bb07fbcfdf3d3355b6f43667b488b9fd651df07457170686b48ce3'
+PYTHON_COMMIT = '1afb914291118889fb6bdb3f0de7e4276b70d2eb'
 CORE_COMMIT = 'd275e3311e7bbf8cac181064559cae8eb6d8f665'
-ARTIFACT_ID = 12947722861
+ARTIFACT_ID = 12955776957
 
 
 def verify(archive_path, destination):
@@ -41,7 +41,7 @@ def verify(archive_path, destination):
             (destination / filename).write_bytes(archive.read('evidence/' + filename))
     identity = dict(python_commit=PYTHON_COMMIT, core_commit=CORE_COMMIT,
                     wheel_sha256=WHEEL_SHA256, artifact_id=ARTIFACT_ID,
-                    archive_sha256=ARCHIVE_SHA256, workflow_run=40981562860)
+                    archive_sha256=ARCHIVE_SHA256, workflow_run=41002663115)
     (destination / 'runtime-identity.json').write_text(json.dumps(identity, indent=2) + '\n')
     print(json.dumps(identity))
 
