@@ -18,8 +18,8 @@ def encoded(value):
 
 def fixture(mutation=None, tar_extra=None, outer_extra=None, stale_outer_sum=False):
     component = dict(wheel_sha256=v.COMPONENT_WHEEL_SHA256,
-                     component_core_commit=v.COMPONENT_CORE_COMMIT, python_commit=v.COMPONENT_PYTHON_COMMIT, artifact_id=13043287406,
-                     workflow_run=41198192027, archive_sha256='04dcd892dfe540073afedf4be5c4d7eefbf4729e25bbc5198dc398c67ec39789')
+                     component_core_commit=v.COMPONENT_CORE_COMMIT, python_commit=v.COMPONENT_PYTHON_COMMIT, artifact_id=13048076548,
+                     workflow_run=41213109108, archive_sha256='cab75653420e1dab97f0689d5be25435ff9488683aa3cade910d7b2f10c08929')
     provenance = dict(server_commit=SERVER, core_commit=CORE, components=component,
                       protocol_version=2, transport='stdio')
     files = {v.ROOT: b'synthetic test executable', 'provenance.json': encoded(provenance),
