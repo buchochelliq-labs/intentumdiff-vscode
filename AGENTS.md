@@ -10,7 +10,7 @@ The VS Code extension: **renders what the engine serves — never computes seman
   never raw source to a cloud endpoint.
 - No image processing in the webview — asset-diff artifacts come from the engine.
 
-## Build + test (Node 20)
+## Build + test (Node 22)
 ```bash
 npm ci && npm run lint && npm run test        # extension (244 tests)
 cd review-shell && npm ci && npm run test     # review shell
