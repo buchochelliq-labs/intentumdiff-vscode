@@ -23,13 +23,25 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install
-        run: npm ci
+        run: npm ci --engine-strict
       - name: Lint (tsc --noEmit)
         run: npm run lint
       - name: Tests
         run: npm run test
+      - name: Verify VSIX packaging
+        run: |
+          npm run vsix
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile(next(Path('.').glob('*.vsix'))) as archive:
+              names = set(archive.namelist())
+              for asset in ('codicon.css', 'codicon.ttf'):
+                  assert f'extension/node_modules/@vscode/codicons/dist/{asset}' in names, asset
+              assert not any('/review-shell/node_modules/' in name for name in names)
+          PYTHON
 
   review-shell:
     name: Review-shell tests
@@ -41,9 +53,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install
-        run: npm ci
+        run: npm ci --engine-strict
         working-directory: review-shell
       - name: Tests
         run: npm run test

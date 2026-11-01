@@ -1,6 +1,6 @@
 # Building intentumdiff-vscode
 
-Toolchain: **Node 20**.
+Toolchain: **Node 22**.
 
 ## Extension
 
