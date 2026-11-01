@@ -7,7 +7,7 @@ import { waitForVisible } from "./desktopEvidence";
 import { liveDiffProbe } from "./liveDiffProbe";
 import { assertMeasuredWasmTelemetry } from "./telemetryAcceptance";
 
-interface Entry { relativePath: string; status: string; changeCount: number;
+interface Entry { relativePath: string; status: string; changeCount: number; error?: string;
   assetDiff?: { status: string; artifacts: Record<string, string> };
   parseErrorCount: number; isStyleOnly: boolean; groupKinds: string[]; engineTelemetry?: unknown; }
 async function waitFor(check: () => Promise<boolean>, label: string): Promise<void> {
@@ -34,15 +34,18 @@ export async function run(): Promise<void> {
   const root = process.env.INTENTUMDIFF_REAL_WORKSPACE!;
   const evidence = process.env.INTENTUMDIFF_REAL_EVIDENCE!;
   const fixtures = [
-    { name: "edit.py", old: "def f(", partial: "def g(", valid: "def g():\n    return 2\n" },
-    { name: "edit.js", old: "function f(", partial: "function g(", valid: "function g() { return 2; }\n" },
+    { name: "edit.py", old: "def f():\n    return 1\n", partial: "def g():\n    return 1\n",
+      invalid: "def g(", valid: "def g():\n    return 2\n" },
+    { name: "edit.js", old: "function f() { return 1; }\n",
+      partial: "function g() { return 1; }\n",
+      invalid: "function g(", valid: "function g() { return 2; }\n" },
   ];
   for (const f of fixtures) fs.writeFileSync(path.join(root, f.name), f.old);
   const assetFixtures = path.resolve(__dirname, "../../../test/fixtures/assets");
   fs.copyFileSync(path.join(assetFixtures, "before.png"), path.join(root, "sample.png"));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root });
   git("init"); git("add", ".");
-  git("-c", "user.name=IntentumDiff acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", "Incomplete baseline");
+  git("-c", "user.name=IntentumDiff acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", "Valid baseline");
   const extension = vscode.extensions.getExtension("buchochelliq-labs.intentumdiff");
   assert.ok(extension);
   assert.equal(extension.extensionPath, process.env.INTENTUMDIFF_REAL_INSTALLED);
@@ -67,30 +70,62 @@ export async function run(): Promise<void> {
     const beforePath = path.join(evidence, `before-${f.name}`);
     const afterPath = path.join(evidence, `after-${f.name}`);
     fs.writeFileSync(beforePath, f.old); fs.writeFileSync(afterPath, f.partial);
+    // The shared Rust completeness contract must fail closed on malformed
+    // source. Do not call a source fallback a complete semantic review.
+    let invalidDiagnostic = "";
+    await assert.rejects(
+      liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.invalid),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /"code"\s*:\s*"native_parse_incomplete"/u);
+        assert.ok(error.message.includes(`${f.name}:`),
+          `${f.name}: missing failed-file provenance`);
+        invalidDiagnostic = error.message;
+        return true;
+      },
+      `${f.name}: malformed source must fail closed`,
+    );
+    fs.writeFileSync(path.join(evidence, `${f.name}.incomplete-error.txt`), invalidDiagnostic);
+
+    // The installed extension must also surface the malformed edit as an
+    // error, never a "ready" review with manufactured empty/style-only edits.
+    await replace(f.invalid);
+    await waitFor(async () => (await files()).some(x =>
+      x.relativePath === f.name && x.status === "error"),
+    `${f.name} incomplete editor review must fail closed`);
+    const rejected = (await files()).find(x => x.relativePath === f.name)!;
+    assert.ok(rejected.error?.includes(`${f.name}:`),
+      `${f.name}: rejected review must retain the Rust failed-file diagnostic`);
+    assert.match(rejected.error ?? "", /incomplete|invalid/iu,
+      `${f.name}: rejected review must describe invalid source`);
+    assert.equal(rejected.changeCount, 0,
+      `${f.name}: rejected source must not advertise semantic changes`);
+    assert.equal(rejected.isStyleOnly, false,
+      `${f.name}: rejected source must not advertise style equivalence`);
+    fs.writeFileSync(path.join(evidence, `${f.name}.incomplete-review.json`),
+      JSON.stringify(rejected, null, 2));
+
+    // Use valid sources for installed-UI review and recovery checks. The
+    // actual Rust result must contain semantic changes, not style/fallback.
     const raw = await liveDiffProbe(process.env.INTENTUMDIFF_TEST_CLI!, root, f.name, f.partial);
     const direct = JSON.parse(raw);
     assert.equal(direct.metadata.engine_owner, "rust");
-    assert.equal(direct.metadata.semantic_contract, "rust_source_fallback_v1");
-    assert.equal(direct.is_fallback, true);
+    assert.deepEqual(direct.parse_errors, []);
+    assert.equal(direct.is_fallback, false);
     assert.equal(direct.is_style_only, false);
-    assert.equal(direct.changes.length, 1);
-    assert.equal(direct.changes[0].old_node.label, "f");
-    assert.equal(direct.changes[0].new_node.label, "g");
-    const offset = f.name.endsWith(".py") ? 4 : 9;
-    assert.deepEqual(direct.metadata.source_ranges, {
-      old_start_byte: offset, old_end_byte: offset + 1,
-      new_start_byte: offset, new_end_byte: offset + 1,
-    });
+    assert.equal(direct.has_semantic_changes, true);
+    assert.ok(Array.isArray(direct.changes) && direct.changes.length > 0);
     fs.writeFileSync(path.join(evidence, `${f.name}.diff.json`), raw);
     await replace(f.partial);
     await waitFor(async () => (await files()).some(x => x.relativePath === f.name &&
-      x.status === "ready" && x.changeCount > 0 && x.parseErrorCount > 0 && !x.isStyleOnly), `${f.name} incomplete review`);
+      x.status === "ready" && x.changeCount > 0 && x.parseErrorCount === 0 && !x.isStyleOnly), `${f.name} valid review`);
     if (f.name === "edit.py") {
       await new Promise(resolve => setTimeout(resolve, 1500));
       execFileSync("scrot", [path.join(evidence, "pending-to-ready.png")]);
     }
     const partial = (await files()).find(x => x.relativePath === f.name)!;
-    assert.ok(partial.groupKinds.includes("MEANINGFUL_CHANGE"));
+    assert.ok(partial.groupKinds.some(kind => kind === "MEANINGFUL_CHANGE" || kind === "REFACTORING"),
+      `${f.name}: no semantic change/refactoring group`);
     const payload = { folderUri: vscode.Uri.file(root).toString(), relativePath: f.name };
     await vscode.commands.executeCommand("intentumdiff.openSemanticDiff", payload);
     await waitFor(async () => vscode.window.tabGroups.all.some(g => g.tabs.some(t =>
@@ -105,7 +140,7 @@ export async function run(): Promise<void> {
     // Capture for manual visual inspection; panel creation is not a render-readiness proof.
     await new Promise(resolve => setTimeout(resolve, 1500));
     if (process.platform === "linux") execFileSync("scrot", [path.join(evidence, `${f.name}.png`)]);
-    // Commit a valid baseline before checking recovery: both inputs must be valid.
+    // Commit an updated valid baseline before testing another real source edit.
     await replace(f.valid); git("add", f.name); git("-c", "user.name=IntentumDiff acceptance", "-c", "user.email=acceptance@example.invalid", "commit", "-m", `Valid ${f.name}`);
     await replace(f.valid.replace("2", "3"));
     await waitFor(async () => (await files()).some(x => x.relativePath === f.name &&

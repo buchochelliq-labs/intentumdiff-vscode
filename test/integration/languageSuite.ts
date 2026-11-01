@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as vscode from "vscode";
 import { waitForVisible } from "./desktopEvidence";
+import { assertSourceJudgedReleaseCase } from "./sourceJudgedReleaseGate";
 
 interface Example {
   language: string; filename: string; old: string; new: string;
@@ -105,6 +106,10 @@ export async function run(): Promise<void> {
         [...f.old.split("\n"), ...f.new.split("\n")].filter(line => line.trim().length > 0));
       await capture(`language-${f.language}-native`);
       await assertComparisonStatus(relativePath);
+      // Inspect the actual packaged CLI output for curated semantics, not just
+      // aggregate VSIX change counts. Runs in both Python and native matrices.
+      await assertSourceJudgedReleaseCase(process.env.INTENTUMDIFF_TEST_CLI!, root,
+        relativePath, f, evidence);
       results.push({ example: f.language, relativePath, expected_summary: f.expected_summary,
         caveats: f.caveats, observed, assessment: "awaiting_independent_output_and_visual_review" });
     } catch (error) {

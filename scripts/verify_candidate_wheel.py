@@ -1,4 +1,4 @@
-"""Verify and extract the exact Python #108 release-profile Linux wheel used for desktop acceptance.
+"""Verify and extract the exact Python #170 release-profile Linux wheel used for desktop acceptance.
 
 Usage: python scripts/verify_candidate_wheel.py ARCHIVE OUTPUT_DIRECTORY
 The CI archive includes the tested synthetic merge SHA, not just the PR head SHA.
@@ -10,12 +10,12 @@ from pathlib import Path
 import sys
 import zipfile
 
-ARCHIVE_SHA256 = 'c8f680a55a86847825a7899f801d479376168f4e0a5f7a1f3af94b7cfb30b52b'
+ARCHIVE_SHA256 = '3a13ca170b2399429d14fcb51aa137ed39bf283095481871cb715c47901ad814'
 WHEEL = 'dist/intentumdiff_python-0.0.2b1-py3-none-linux_x86_64.whl'
-WHEEL_SHA256 = '9baaa4e251c83efbddc0ff095e61b7458de465b06aa8924403eee0c64c0a77b8'
-PYTHON_COMMIT = 'a5f6d3ce2cd926bf1cf16f1b6396fd2051698d04'
-CORE_COMMIT = '60237b1d9f820e8ebaffb718e8e4a5c752d9cda1'
-ARTIFACT_ID = 12747382693
+WHEEL_SHA256 = '14b48d7b1f38f1e49fa58393b1444c0cfa5de61221effbe82577740f5ba52a67'
+PYTHON_COMMIT = '8c3f424f42c72c9ef814cd3c3ed639537c5b183e'
+CORE_COMMIT = '80f9c5bf64ff42ef1b7ddf4124c6b19a7ca7695c'
+ARTIFACT_ID = 13099160262
 
 
 def verify(archive_path, destination):
@@ -41,7 +41,7 @@ def verify(archive_path, destination):
             (destination / filename).write_bytes(archive.read('evidence/' + filename))
     identity = dict(python_commit=PYTHON_COMMIT, core_commit=CORE_COMMIT,
                     wheel_sha256=WHEEL_SHA256, artifact_id=ARTIFACT_ID,
-                    archive_sha256=ARCHIVE_SHA256, workflow_run=40530415772)
+                    archive_sha256=ARCHIVE_SHA256, workflow_run=41339401182)
     (destination / 'runtime-identity.json').write_text(json.dumps(identity, indent=2) + '\n')
     print(json.dumps(identity))
 

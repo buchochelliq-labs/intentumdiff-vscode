@@ -86,6 +86,7 @@ import {
   isStyleOnlyReviewDiff,
   reviewEntriesForCrossFileChanges,
   summarizeReviewWithCrossFile,
+  shouldInvalidateOnCommitReviewFailure,
   type ReviewCrossFileEntry,
   type ReviewFile,
   type ReviewFileGroupingMode,
@@ -1364,6 +1365,7 @@ class PysdController implements vscode.Disposable {
         folderUri: file.folderUri,
         relativePath: file.relativePath,
         status: file.status,
+        error: file.error,
         language: file.diff?.language,
         changeCount: file.diff?.changes?.length ?? 0,
         changeTypes: [...new Set((file.diff?.changes ?? []).map((change) => change.change_type))],
@@ -2387,7 +2389,20 @@ class PysdController implements vscode.Disposable {
       return false;
     }
     this.recordReviewFailure(message, code);
-    this.completeReviewRequest(folder.uri.toString(), seq);
+    // A failed commit review cannot certify pending files or earlier streamed
+    // file events (those are provisional until Rust certifies the whole review).
+    // Retain independently completed file reviews and other folders unchanged.
+    const folderUri = folder.uri.toString();
+    const streamed = this.streamedReviewFiles.get(folderUri) ?? new Set<string>();
+    for (const [fileKey, file] of this.reviewFiles) {
+      if (shouldInvalidateOnCommitReviewFailure(file, folderUri, streamed)) {
+        this.reviewFiles.set(fileKey, {
+          ...file, status: "error", diff: undefined, error: message,
+        });
+      }
+    }
+    this.streamedReviewFiles.delete(folderUri);
+    this.completeReviewRequest(folderUri, seq);
     this.reviewFiles.set(reviewKey(folder.uri.toString(), ".intentumdiff-review"), {
       folderName: folder.name,
       folderUri: folder.uri.toString(),
