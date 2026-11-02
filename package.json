@@ -2,17 +2,16 @@
   "name": "intentumdiff",
   "displayName": "IntentumDiff",
   "description": "Live semantic review that surfaces moved code, refactorings, and meaningful changes.",
-  "version": "0.0.2-beta.1",
+  "version": "0.0.2",
   "publisher": "buchochelliq-labs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/buchochelliq-labs/intentumdiff.git",
-    "directory": "plugins/vscode"
+    "url": "https://github.com/buchochelliq-labs/intentumdiff-vscode.git"
   },
-  "homepage": "https://github.com/buchochelliq-labs/intentumdiff/tree/main/plugins/vscode",
+  "homepage": "https://github.com/buchochelliq-labs/intentumdiff-vscode",
   "bugs": {
-    "url": "https://github.com/buchochelliq-labs/intentumdiff/issues"
+    "url": "https://github.com/buchochelliq-labs/intentumdiff-vscode/issues"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -942,7 +941,7 @@
     "test:unit": "node --test out/test/*.test.js",
     "test:integration": "npm run compile && node out/test/integration/runTests.js",
     "test:semanticdiff-comparison": "npm run compile && node out/test/comparison/runComparison.js",
-    "vsix": "npm run compile && vsce package --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff/blob/HEAD/plugins/vscode --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff/raw/HEAD/plugins/vscode",
+    "vsix": "npm run compile && vsce package --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/blob/HEAD --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/raw/HEAD",
     "release:dry-run": "powershell -ExecutionPolicy Bypass -File ../../scripts/verify-vscode-extension-release.ps1",
     "install:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/install-vscode-extension.ps1",
     "sync:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/sync-local-dev.ps1",
