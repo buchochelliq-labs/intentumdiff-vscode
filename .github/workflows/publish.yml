@@ -1,10 +1,9 @@
 name: Publish extension
 
-# Packages the extension and publishes it to the VS Code Marketplace and Open VSX.
+# Promotes exactly the VSIX already installed and reviewed by CI.
 #
-# Tag-driven for a real release; workflow_dispatch offers a dry run that packages and
-# validates the VSIX WITHOUT publishing, so the packaging path can be exercised before
-# any token is configured or any version is burned.
+# Tag-driven, fail closed: supply an approved acceptance run, artifact ID, source SHA
+# and expected SHA-256 through repository variables or explicit dry-run inputs.
 on:
   pull_request:
     paths: ["package.json", "package-lock.json", ".vscodeignore", ".github/workflows/publish.yml"]
@@ -14,10 +13,22 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Package and validate only - do not publish"
+        description: "Verify reviewed VSIX without publishing"
         required: false
         default: true
         type: boolean
+      candidate_run_id:
+        description: "Successful installed-runtime acceptance run ID"
+        type: string
+      candidate_artifact_id:
+        description: "Exact reviewed rc-candidate-vsix artifact ID"
+        type: string
+      candidate_sha256:
+        description: "Expected reviewed VSIX SHA-256"
+        type: string
+      candidate_source_sha:
+        description: "Reviewed source commit SHA"
+        type: string
 
 # Deny by default (zizmor excessive-permissions): each job asks for exactly what it
 # needs rather than inheriting a read-write repository default.
@@ -25,11 +36,21 @@ permissions: {}
 
 jobs:
   package:
-    name: Package VSIX
+    name: Verify reviewed VSIX
+    # Only promote exact bytes that passed installed-runtime acceptance.
+    # The real-runtime workflow handles builds for PRs. Release workflows never rebuild.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
+      actions: read
+    env:
+      REVIEWED_RUN_ID: ${{ inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID }}
+      REVIEWED_ARTIFACT_ID: ${{ inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID }}
+      REVIEWED_VSIX_SHA256: ${{ inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256 }}
+      REVIEWED_SOURCE_SHA: ${{ inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -37,16 +58,12 @@ jobs:
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "22"
-      - name: Install
-        run: npm ci
-
-      - name: Lint and test before packaging
+      - name: Install and test release source
         run: |
+          npm ci
           npm run lint
           npm run test
 
-      # A tag must agree with package.json, or the Marketplace listing and the git
-      # history disagree about what shipped. Fail here rather than after publishing.
       - name: Tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -54,37 +71,55 @@ jobs:
         run: |
           pkg=$(node -p "require('./package.json').version")
           tag="${GIT_TAG#v}"
-          echo "package.json=$pkg  tag=$tag"
           if [ "$pkg" != "$tag" ]; then
             echo "::error::tag $tag does not match package.json $pkg" >&2
             exit 1
           fi
 
-      - name: Package
-        run: npm run vsix
-
-      - name: Verify the VSIX
+      - name: Require successful installed-runtime review and exact artifact provenance
+        shell: bash
         run: |
-          shopt -s nullglob
-          vsix=(*.vsix)
-          if [ "${#vsix[@]}" -ne 1 ]; then
-            echo "::error::expected exactly one .vsix, found ${#vsix[@]}" >&2
-            exit 1
-          fi
-          echo "built ${vsix[0]} ($(du -h "${vsix[0]}" | cut -f1))"
-          # The extension entry point must actually be inside the archive; vsce will
-          # happily package an empty build if compilation silently produced nothing.
-          # Read the path from package.json rather than hardcoding it: `main` is
-          # ./out/src/extension.js here, not ./out/extension.js, and a hardcoded guess
-          # fails the build for the wrong reason the moment the layout changes.
+          set -euo pipefail
+          [[ "$REVIEWED_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::reviewed run ID is required" >&2; exit 1; }
+          [[ "$REVIEWED_ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::reviewed artifact ID is required" >&2; exit 1; }
+          [[ "$REVIEWED_VSIX_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::expected VSIX SHA256 is required" >&2; exit 1; }
+          [[ "$REVIEWED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::reviewed source commit is required" >&2; exit 1; }
+
+          run="repos/$GITHUB_REPOSITORY/actions/runs/$REVIEWED_RUN_ID"
+          artifact="repos/$GITHUB_REPOSITORY/actions/artifacts/$REVIEWED_ARTIFACT_ID"
+          [ "$(gh api "$run" --jq '.conclusion')" = "success" ] || { echo "::error::reviewed run did not succeed" >&2; exit 1; }
+          [ "$(gh api "$run" --jq '.name')" = "Packaged extension real-runtime acceptance" ] || { echo "::error::not the installed-runtime workflow" >&2; exit 1; }
+          [ "$(gh api "$run" --jq '.head_sha')" = "$REVIEWED_SOURCE_SHA" ] || { echo "::error::reviewed run source mismatch" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.name')" = "rc-candidate-vsix" ] || { echo "::error::wrong reviewed artifact name" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.workflow_run.id')" = "$REVIEWED_RUN_ID" ] || { echo "::error::artifact does not belong to reviewed run" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.workflow_run.head_sha')" = "$REVIEWED_SOURCE_SHA" ] || { echo "::error::artifact source mismatch" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.expired')" = "false" ] || { echo "::error::reviewed artifact expired" >&2; exit 1; }
+          reviewed_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$REVIEWED_SOURCE_SHA" --jq '.tree.sha')
+          tag_tree=$(git rev-parse HEAD^{tree})
+          [ "$reviewed_tree" = "$tag_tree" ] || { echo "::error::tag source tree differs from reviewed candidate" >&2; exit 1; }
+
+      - name: Require honest release-media provenance
+        run: |
+          python3 scripts/validate_release_media_manifest.py release-media/manifest.json \
+            --expected-version "$(node -p "require('./package.json').version")" \
+            --expected-commit "$REVIEWED_SOURCE_SHA"
+
+      - name: Download and verify reviewed VSIX without rebuilding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reviewed-vsix"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$REVIEWED_ARTIFACT_ID/zip" > "$RUNNER_TEMP/reviewed-vsix.zip"
+          unzip -q "$RUNNER_TEMP/reviewed-vsix.zip" -d "$RUNNER_TEMP/reviewed-vsix"
+          pkg=$(node -p "require('./package.json').version")
+          vsix="intentumdiff-$pkg.vsix"
+          test -f "$RUNNER_TEMP/reviewed-vsix/$vsix"
+          [ "$(find "$RUNNER_TEMP/reviewed-vsix" -maxdepth 1 -type f -name '*.vsix' | wc -l)" -eq 1 ]
+          cp "$RUNNER_TEMP/reviewed-vsix/$vsix" "$vsix"
+          printf '%s  %s\n' "$REVIEWED_VSIX_SHA256" "$vsix" | sha256sum --check -
           entry=$(node -p "require('./package.json').main.replace(/^[.][/]/, '')")
-          echo "package.json main -> $entry"
-          unzip -l "${vsix[0]}" | grep -q "extension/${entry}" \
-            || { echo "::error::VSIX contains no compiled entry point at extension/${entry}" >&2
-                 echo "--- archive contents ---" >&2
-                 unzip -l "${vsix[0]}" | head -40 >&2
-                 exit 1; }
-          python - "${vsix[0]}" <<'PY'
+          unzip -Z1 "$vsix" | grep -Fxq "extension/$entry" || { echo "::error::reviewed VSIX lacks compiled entry" >&2; exit 1; }
+          python3 - "$vsix" <<'PY'
           import sys, zipfile
           forbidden = ("extension/.github/", "extension/.claude/", "extension/scripts/",
                        "extension/review-shell/", "extension/docs/", "extension/out/test/")
@@ -94,9 +129,9 @@ jobs:
               leaked = [name for name in archive.namelist()
                         if name.startswith(forbidden) or name in forbidden_files]
           if leaked:
-              raise SystemExit("Development/audit files leaked into VSIX: " + ", ".join(leaked))
+              raise SystemExit("Development/audit files leaked into verified VSIX: " + ", ".join(leaked))
           PY
-          sha256sum "${vsix[0]}" | tee "${vsix[0]}.sha256"
+          printf '%s  %s\n' "$REVIEWED_VSIX_SHA256" "$vsix" > "$vsix.sha256"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
