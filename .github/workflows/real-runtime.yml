@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Build and verify one VSIX
         run: |
           npm ci
@@ -75,12 +75,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
-          node-version: '20'
+          node-version: '22'
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      # Python #170 source-judged Linux RC artifact (CI run 41475126390; core 80f9c5bf). All five jobs remain a release gate; native uses same wheel bytes. Reuse the tested wheel, not a fresh build
-      # against historical parser components. Expired/missing artifacts fail loudly.
+      # Python #278 stable 0.0.2 release-profile wheel (CI run 41498717337; Core ee3d44bc). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
       - name: Download and verify reviewed candidate wheel
         if: matrix.runtime == 'python'
         env:
@@ -88,7 +87,7 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_wheel.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/13161172539/zip > .candidate-download/wheel.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/13171972345/zip > .candidate-download/wheel.zip
           python scripts/verify_candidate_wheel.py .candidate-download/wheel.zip .candidate-wheels
       - name: Install external candidate wheel
         if: matrix.runtime == 'python'
@@ -104,7 +103,7 @@ jobs:
               for key in ('python_commit', 'core_commit', 'wheel_sha256', 'artifact_id'):
                   env.write(f"INTENTUMDIFF_TEST_{key.upper()}={identity[key]}\n")
           PY
-      # Native server #22: exact tested release binary and byte-identical pinned Python #276 parser components.
+      # Native #23: exact tested binary with the same immutable stable Python #278 wheel and parser components.
       - name: Download and verify native candidate
         if: matrix.runtime == 'native'
         env:
@@ -112,13 +111,13 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_native.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/13164832003/zip > .candidate-download/native.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/13176032285/zip > .candidate-download/native.zip
           python scripts/verify_candidate_native.py .candidate-download/native.zip .candidate-native \
-            --expected-archive-sha256 2e0a247bacc153be001da29a6c8b5f7c837650aa10d3daf3029ebf286f109c63 \
-            --expected-server-commit 7231640d246355a1add6ebdfe79eb409b12d9659 \
+            --expected-archive-sha256 ba1520726f1a1a6924db2858c9d086064b0db17a2e6897753755716933c28961 \
+            --expected-server-commit 654e16bbe3b1aa91e193766512ef071ce8335f7e \
             --expected-core-commit ee3d44bcef12555b52d0b09a8a0183b29e0c0cf4
           echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-native/intentumdiff-live-server" >> "$GITHUB_ENV"
-          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=13164832003" >> "$GITHUB_ENV"
+          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=13176032285" >> "$GITHUB_ENV"
           python - <<'PYTHON'
           import json, os
           from pathlib import Path
