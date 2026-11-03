@@ -64,13 +64,20 @@ never in `settings.json`.
 - VS Code 1.90 or newer
 - A workspace folder backed by git
 
-Put `intentumdiff-live-server` on your `PATH`, or set `intentumdiff.executable`
-to its absolute path. Missing native runtime is an error; the extension does not
-silently switch to Python.
+**Which runtime the extension uses (0.0.2):**
 
-For an explicitly selected legacy Python runtime, set
-`intentumdiff.liveServer.engine` to `python` and install `intentumdiff-python`.
-That compatibility mode is tested separately from the native runtime.
+| Platform | Default (`intentumdiff.liveServer.engine: auto`) |
+|---|---|
+| Linux x64 | Native Rust runtime (`intentumdiff-live-server`) |
+| macOS, Windows, Linux arm64 | Python runtime: `pip install intentumdiff-python` |
+
+On Linux x64, put `intentumdiff-live-server` on your `PATH`, or set
+`intentumdiff.executable` to its absolute path. When the native runtime is selected
+and missing, that is an error; the extension does not silently switch to Python.
+
+Native builds for other platforms are planned for 0.0.3. To choose a runtime
+explicitly on any platform, set `intentumdiff.liveServer.engine` to `native` or
+`python`.
 
 Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-started/**
 
