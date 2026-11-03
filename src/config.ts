@@ -85,12 +85,23 @@ export type LiveServerLaunch =
   | { kind: "native"; executable: string }
   | { kind: "python" };
 
-/** Explicit executables win. Auto/native select Rust, including an external
- *  server when no bundle is present. Python requires an explicit engine choice. */
+/** Platforms (`<process.platform>-<process.arch>`) with a released, verified native
+ *  live-server build. 0.0.2 ships linux-x64 only (vscode#102, live-server#25); everywhere
+ *  else `auto` uses the Python runtime rather than defaulting to a binary that does not exist. */
+export const VERIFIED_NATIVE_PLATFORMS: readonly string[] = ["linux-x64"];
+
+export function currentPlatformKey(): string {
+  return `${process.platform}-${process.arch}`;
+}
+
+/** Explicit executables win, then an explicit engine, then a bundled native server.
+ *  `auto` without a bundle selects the external Rust server only on a platform with a
+ *  verified native release, and the Python runtime elsewhere. */
 export function chooseLiveServerLaunch(
   rawExecutable: string,
   engine: LiveServerEngine,
   bundledPath: string | undefined,
+  platformKey: string = currentPlatformKey(),
 ): LiveServerLaunch {
   if (rawExecutable !== "intentumdiff") {
     return engine === "python"
@@ -102,6 +113,9 @@ export function chooseLiveServerLaunch(
   }
   if (bundledPath) {
     return { kind: "native", executable: bundledPath };
+  }
+  if (engine === "auto" && !VERIFIED_NATIVE_PLATFORMS.includes(platformKey)) {
+    return { kind: "python" };
   }
   return { kind: "native", executable: "intentumdiff-live-server" };
 }

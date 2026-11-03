@@ -31,8 +31,18 @@ test("auto prefers the bundled native server when present", () => {
   });
 });
 
-test("auto without a bundle launches the external Rust server", () => {
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined), { kind: "native", executable: "intentumdiff-live-server" });
+test("auto without a bundle launches the external Rust server on a verified native platform", () => {
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, "linux-x64"), { kind: "native", executable: "intentumdiff-live-server" });
+});
+
+test("auto without a bundle uses the Python runtime where no verified native build exists (vscode#102)", () => {
+  for (const platform of ["darwin-arm64", "darwin-x64", "win32-x64", "win32-arm64", "linux-arm64"]) {
+    assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, platform), { kind: "python" }, platform);
+  }
+  // A bundled binary, an explicit engine and an explicit executable still win everywhere.
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", BUNDLED, "win32-x64"), { kind: "native", executable: BUNDLED });
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined, "darwin-arm64"), { kind: "native", executable: "intentumdiff-live-server" });
+  assert.deepEqual(chooseLiveServerLaunch("/opt/ids", "auto", undefined, "darwin-arm64"), { kind: "native", executable: "/opt/ids" });
 });
 
 test("engine=python skips the bundle even when present", () => {
