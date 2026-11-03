@@ -103,7 +103,7 @@ jobs:
               for key in ('python_commit', 'core_commit', 'wheel_sha256', 'artifact_id'):
                   env.write(f"INTENTUMDIFF_TEST_{key.upper()}={identity[key]}\n")
           PY
-      # Native #23: exact tested binary with the same immutable stable Python #278 wheel and parser components.
+      # Native release head f125227 (live-server #27, Core 161cdbc): exact tested binary with the same immutable Python e155d48 wheel and parser components.
       - name: Download and verify native candidate
         if: matrix.runtime == 'native'
         env:
