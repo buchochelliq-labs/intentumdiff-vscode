@@ -174,8 +174,8 @@ jobs:
 
           $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
           if (-not (Test-Path $mp)) {
-            Write-Host "::warning::MpCmdRun.exe not present on this runner - scan skipped"
-            exit 0
+            Write-Error "::error::MpCmdRun.exe not present on this runner - cannot certify scanned artifact"
+            exit 1
           }
 
           & $mp -SignatureUpdate | Out-Null
