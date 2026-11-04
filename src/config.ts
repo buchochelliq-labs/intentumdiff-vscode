@@ -85,18 +85,30 @@ export type LiveServerLaunch =
   | { kind: "native"; executable: string }
   | { kind: "python" };
 
-/** Pure launch chooser (#100 Phase C — native-by-default cutover): an EXPLICIT
- *  `intentumdiff.executable` always wins (users may point at their own binary); otherwise the
- *  trusted `intentumdiff.liveServer.engine` setting decides — "python" skips the bundle,
- *  "auto"/"native" use the bundled native server when present. With nothing bundled the python
- *  engine keeps working (a requested-native degrade is the caller's to surface). */
+/** Platforms (`<process.platform>-<process.arch>`) with a *published*, verified native
+ *  live-server release. 0.0.2 publishes none (live-server#25: CI artifacts only), so `auto`
+ *  uses the Python runtime everywhere rather than defaulting to a binary users cannot get.
+ *  Add a platform here only once its release asset is published (0.0.3, vscode#21). */
+export const VERIFIED_NATIVE_PLATFORMS: readonly string[] = [];
+
+export function currentPlatformKey(): string {
+  return `${process.platform}-${process.arch}`;
+}
+
+/** Explicit executables win, then an explicit engine, then a bundled native server.
+ *  `auto` without a bundle selects the external Rust server only on a platform with a
+ *  verified native release, and the Python runtime elsewhere. */
 export function chooseLiveServerLaunch(
   rawExecutable: string,
   engine: LiveServerEngine,
   bundledPath: string | undefined,
+  platformKey: string = currentPlatformKey(),
+  verifiedPlatforms: readonly string[] = VERIFIED_NATIVE_PLATFORMS,
 ): LiveServerLaunch {
   if (rawExecutable !== "intentumdiff") {
-    return { kind: "python" };
+    return engine === "python"
+      ? { kind: "python" }
+      : { kind: "native", executable: rawExecutable };
   }
   if (engine === "python") {
     return { kind: "python" };
@@ -104,7 +116,10 @@ export function chooseLiveServerLaunch(
   if (bundledPath) {
     return { kind: "native", executable: bundledPath };
   }
-  return { kind: "python" };
+  if (engine === "auto" && !verifiedPlatforms.includes(platformKey)) {
+    return { kind: "python" };
+  }
+  return { kind: "native", executable: "intentumdiff-live-server" };
 }
 
 /** What `ensure()` decided at spawn time — carried into failure handling so ENOENT advice
@@ -128,6 +143,10 @@ export interface LiveServerFailureDetails {
  *  three distinct fixes: a missing USER override points at the setting (and the bundled
  *  engine when we ship one — never at the .venv, which would be a downgrade); a missing
  *  bundle means a broken install; a missing python CLI means the workspace .venv. */
+/** 0.0.2 ships the Python runtime as a pre-release (0.0.2b2): plain `pip install` would
+ *  pick the older stable 0.0.1, so the advice names `--pre`. */
+export const PYTHON_INSTALL_COMMAND = "pip install --pre intentumdiff-python";
+
 export function enoentFailureDetails(
   executable: string,
   launch: LiveServerLaunchContext,
@@ -137,7 +156,7 @@ export function enoentFailureDetails(
   if (launch.userOverride) {
     const fix = launch.bundledPath !== undefined
       ? "Remove the 'intentumdiff.executable' setting to use the extension's bundled engine, or point it at an existing executable."
-      : "Point the 'intentumdiff.executable' setting at an existing executable, or remove it to use IntentumDiff from the workspace .venv.";
+      : "Point the 'intentumdiff.executable' setting at an existing executable.";
     return {
       message: `The configured IntentumDiff executable does not exist: ${executable}. ${fix} ${restart}`,
       toast: "IntentumDiff: the configured 'intentumdiff.executable' was not found.",
@@ -145,14 +164,20 @@ export function enoentFailureDetails(
     };
   }
   if (launch.kind === "native") {
+    if (!launch.bundledPath) {
+      return {
+        message: `Could not find the external Rust server '${executable}'. Install intentumdiff-live-server with its verified wasm components, or set 'intentumdiff.executable' to its absolute path. ${restart}`,
+        toast: "IntentumDiff: external Rust server not found.",
+      };
+    }
     return {
       message: `The bundled IntentumDiff engine is missing: ${executable}. Reinstall the IntentumDiff extension, or set 'intentumdiff.liveServer.engine' to 'python'. ${restart}`,
       toast: "IntentumDiff: the bundled engine is missing — reinstall the extension.",
     };
   }
   const install = venvCandidate !== undefined
-    ? `Install IntentumDiff into the workspace .venv (expected at ${venvCandidate}), or set 'intentumdiff.executable' to an absolute path.`
-    : "Install IntentumDiff, then set 'intentumdiff.executable' to an absolute path.";
+    ? `Install IntentumDiff into the workspace .venv with '${PYTHON_INSTALL_COMMAND}' (expected at ${venvCandidate}), or set 'intentumdiff.executable' to an absolute path.`
+    : `Install IntentumDiff with '${PYTHON_INSTALL_COMMAND}', then set 'intentumdiff.executable' to an absolute path.`;
   return {
     message: `Could not find '${executable}' on VS Code's PATH. ${install} ${restart}`,
     toast: "IntentumDiff was not found — install it or set 'intentumdiff.executable'.",

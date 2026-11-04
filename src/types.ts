@@ -222,6 +222,8 @@ export interface LiveResponse {
   cancelled?: number;
   error?: ErrorPayload;
   metadata?: Record<string, unknown>;
+  /** The `asset_diff` op's payload: the engine's perceptual manifest, passed through verbatim. */
+  result?: Record<string, unknown>;
 }
 
 export interface LiveServerSettings {

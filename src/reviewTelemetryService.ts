@@ -136,14 +136,21 @@ export class ReviewTelemetryService {
       return;
     }
     const key = reviewKey(folderUri, relativePath);
-    const history = [...(this.fuelHistory.get(key) ?? []), summary.peakFuel].slice(-12);
-    this.fuelHistory.set(key, history);
-    this.persistFuelHistory();
+    const calls = parserCallsForDiff(diff);
+    const fuelMeasured = calls.some(call => call.fuelConsumed !== undefined);
+    const totalMeasured = calls.some(call => call.totalFuelConsumed !== undefined);
+    const previous = this.fuelHistory.get(key) ?? [];
+    const history = fuelMeasured ? [...previous, summary.peakFuel].slice(-12) : previous;
+    if (fuelMeasured) {
+      this.fuelHistory.set(key, history);
+      this.persistFuelHistory();
+    }
     this.host.output.appendLine(JSON.stringify({
       fuelTelemetry: {
         file: relativePath,
-        peakFuel: summary.peakFuel,
-        totalFuel: summary.totalFuel,
+        peakFuel: fuelMeasured ? summary.peakFuel : null,
+        totalFuel: totalMeasured ? summary.totalFuel : null,
+        fuelMeasured,
         calls: summary.callCount,
         hotspots: summary.hotspotCount,
         parseErrors: summary.parseErrorCount,

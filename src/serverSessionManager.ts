@@ -15,12 +15,14 @@ import {
 import {
   readLiveServerEngine,
   readLiveServerRawExecutable,
+  resolveExecutableForFolder,
   settingsForFolder,
   workspaceVenvIntentumDiffCandidates,
 } from "./extensionSettings";
 import { ProcessLineTransport } from "./processTransport";
 import {
   LiveServerClient,
+  type AssetDiffEnvelope,
   type DiffResultEnvelope,
   type ReviewFileEnvelope,
   type ReviewResultEnvelope,
@@ -43,10 +45,13 @@ export interface ServerSessionHost {
   onDiff(folder: vscode.WorkspaceFolder, result: DiffResultEnvelope): void;
   onReviewResult(folder: vscode.WorkspaceFolder, result: ReviewResultEnvelope): void;
   onReviewFile(folder: vscode.WorkspaceFolder, result: ReviewFileEnvelope): void;
+  onAssetDiff(folder: vscode.WorkspaceFolder, result: AssetDiffEnvelope): void;
   /** Return true when the error belonged to a full-review request. */
   onReviewError(folder: vscode.WorkspaceFolder, seq: number, message: string, code?: string): boolean;
   /** Return true when the error belonged to an incremental request. */
   onIncrementalReviewError(folder: vscode.WorkspaceFolder, seq: number, message: string, code?: string): boolean;
+  /** Return true when the error belonged to a perceptual asset request. */
+  onAssetDiffError(folder: vscode.WorkspaceFolder, seq: number, message: string): boolean;
   onProtocolError(error: { code: string; message: string }): void;
   onFailure(folder: vscode.WorkspaceFolder, details: LiveServerFailureDetails): Promise<void>;
 }
@@ -68,9 +73,7 @@ export class ServerSessionManager {
     }
 
     const settings = settingsForFolder(folder);
-    // #100 Phase C: prefer the BUNDLED native live-server unless the user overrode the
-    // executable or forced engine=python. The native binary is a CLI drop-in and finds its
-    // parsers next to itself, so only the executable changes.
+    // Rust is the default external runtime. Python is explicit opt-in only.
     const rawExecutable = readLiveServerRawExecutable();
     const engine = readLiveServerEngine();
     const bundled = bundledLiveServerPath(this.host.extensionPath);
@@ -80,16 +83,15 @@ export class ServerSessionManager {
       userOverride: rawExecutable !== "intentumdiff",
       bundledPath: bundled,
     };
-    if (launch.kind === "native") {
-      settings.executable = launch.executable;
-    } else if (engine === "native") {
-      this.host.output.appendLine(
-        "intentumdiff.liveServer.engine is 'native' but no bundled native server was found; using the python engine.",
-      );
-    }
+    // Resolve by what is actually launched, not the literal setting: `auto` resolving to
+    // Python must find the workspace .venv exactly as an explicit `python` does.
+    settings.executable = launch.kind === "native"
+      ? launch.executable
+      : resolveExecutableForFolder(settings.executable, folder);
     const args = buildLiveServerArgs(folder.uri.fsPath, settings);
     this.host.trace(`spawn [engine=${launch.kind}] ${settings.executable} ${args.join(" ")}`);
     let transport: ProcessLineTransport;
+    const isCurrentSession = () => this.sessions.get(key)?.transport === transport;
     const client = new LiveServerClient({
       writeLine: (line) => {
         this.host.trace(`> ${line}`);
@@ -107,11 +109,19 @@ export class ServerSessionManager {
         },
         onStderr: (line) => this.host.trace(`stderr: ${line}`),
         onExit: (code, signal) => {
+          // disposeAll removes sessions before killing their processes. Ignore those exits,
+          // and delayed exits from a process which has already been replaced.
+          if (!isCurrentSession()) return;
           this.host.setStatusText("IntentumDiff: stopped");
           this.host.output.appendLine(`LiveServer exited: code=${code ?? "null"} signal=${signal ?? "null"}`);
           this.sessions.delete(key);
+          void this.host.onFailure(folder, {
+            message: `LiveServer exited unexpectedly: code=${code ?? "null"} signal=${signal ?? "null"}`,
+            toast: "IntentumDiff LiveServer stopped unexpectedly. Refresh the review to retry.",
+          });
         },
         onError: (error) => {
+          if (!isCurrentSession()) return;
           this.host.setStatusText("IntentumDiff: error");
           this.sessions.delete(key);
           const details = liveServerErrorDetails(error, settings, folder, launchContext);
@@ -146,10 +156,18 @@ export class ServerSessionManager {
         this.host.onReviewFile(folder, event.result);
         return;
       }
+      if (event.kind === "asset_diff") {
+        this.host.onAssetDiff(folder, event.result);
+        return;
+      }
       if (event.kind === "error") {
+        // An asset request that failed must be released from the client's in-flight map, or a
+        // later response reusing the seq would be dropped as unknown.
+        client.forgetAssetDiff(event.seq);
         if (
           !this.host.onReviewError(folder, event.seq, event.error.message, event.error.code)
           && !this.host.onIncrementalReviewError(folder, event.seq, event.error.message, event.error.code)
+          && !this.host.onAssetDiffError(folder, event.seq, event.error.message)
         ) {
           this.host.onProtocolError(event.error);
         }
@@ -164,10 +182,11 @@ export class ServerSessionManager {
   }
 
   disposeAll(): void {
-    for (const session of this.sessions.values()) {
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    for (const session of sessions) {
       session.transport.dispose();
     }
-    this.sessions.clear();
   }
 }
 

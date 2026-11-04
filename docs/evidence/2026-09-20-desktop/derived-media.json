@@ -1,0 +1,8 @@
+{
+  "source": "workflow.mp4",
+  "source_sha256": "91bae8b8afd4bc88d10f3f52a5c4df8967b8a4205c381affb6c7bed061fe83fd",
+  "derived": "workflow-reviewed.gif",
+  "derived_sha256": "e13d8f491ba9fd6a43a6b830df896ed9b9430fede95cd5d4a4a06a48e56b2c73",
+  "filter_complex": "[0:v]fps=8,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse=dither=sierra2_4a",
+  "note": "Palette-optimized display derivative; original capture manifest remains unchanged."
+}

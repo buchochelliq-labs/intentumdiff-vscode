@@ -1,0 +1,270 @@
+[
+  {
+    "file": "edit.py",
+    "partial": {
+      "folderName": "workspace",
+      "folderUri": "file:///tmp/intentumdiff-real-IqvDHf/workspace",
+      "relativePath": "edit.py",
+      "status": "ready",
+      "language": "python",
+      "changeCount": 1,
+      "changeTypes": [
+        "MODIFICATION"
+      ],
+      "groupKinds": [
+        "MEANINGFUL_CHANGE"
+      ],
+      "guardrailCount": 0,
+      "parseErrorCount": 1,
+      "isStyleOnly": false
+    },
+    "recovered": {
+      "folderName": "workspace",
+      "folderUri": "file:///tmp/intentumdiff-real-IqvDHf/workspace",
+      "relativePath": "edit.py",
+      "status": "ready",
+      "language": "python",
+      "changeCount": 1,
+      "changeTypes": [
+        "MODIFICATION"
+      ],
+      "groupKinds": [
+        "MEANINGFUL_CHANGE"
+      ],
+      "guardrailCount": 0,
+      "parseErrorCount": 0,
+      "isStyleOnly": false
+    }
+  },
+  {
+    "file": "edit.js",
+    "partial": {
+      "folderName": "workspace",
+      "folderUri": "file:///tmp/intentumdiff-real-IqvDHf/workspace",
+      "relativePath": "edit.js",
+      "status": "ready",
+      "language": "javascript",
+      "changeCount": 1,
+      "changeTypes": [
+        "MODIFICATION"
+      ],
+      "groupKinds": [
+        "MEANINGFUL_CHANGE"
+      ],
+      "guardrailCount": 0,
+      "parseErrorCount": 1,
+      "isStyleOnly": false
+    },
+    "recovered": {
+      "folderName": "workspace",
+      "folderUri": "file:///tmp/intentumdiff-real-IqvDHf/workspace",
+      "relativePath": "edit.js",
+      "status": "ready",
+      "language": "javascript",
+      "changeCount": 1,
+      "changeTypes": [
+        "MODIFICATION"
+      ],
+      "groupKinds": [
+        "IGNORED_STYLE",
+        "MEANINGFUL_CHANGE"
+      ],
+      "guardrailCount": 0,
+      "parseErrorCount": 0,
+      "isStyleOnly": false
+    }
+  },
+  {
+    "image": {
+      "folderName": "workspace",
+      "folderUri": "file:///tmp/intentumdiff-real-IqvDHf/workspace",
+      "relativePath": "sample.png",
+      "status": "ready",
+      "language": "png",
+      "changeCount": 1,
+      "changeTypes": [
+        "MODIFICATION"
+      ],
+      "groupKinds": [
+        "asset"
+      ],
+      "guardrailCount": 0,
+      "parseErrorCount": 0,
+      "isStyleOnly": false,
+      "assetDiff": {
+        "after_dimensions": {
+          "height": 64,
+          "width": 64
+        },
+        "alpha_handling": "include",
+        "artifacts": {
+          "after": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/after.png",
+          "before": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/before.png",
+          "contact_sheet": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/contact-sheet.png",
+          "diff": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/diff.png",
+          "heatmap": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/heatmap.png",
+          "mask": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/mask.png",
+          "overlay": "/tmp/intentumdiff-real-IqvDHf/workspace/.intentumdiff-cache/assets/sample-2f73b8081892-590458ed4a6e/overlay.png"
+        },
+        "before_dimensions": {
+          "height": 64,
+          "width": 64
+        },
+        "changed_pixel_percentage": 12.915,
+        "changed_pixels": 529,
+        "comparison_dimensions": {
+          "height": 64,
+          "width": 64
+        },
+        "decoded_cost": {
+          "after_pixels": 4096,
+          "after_rgba_bytes": 16384,
+          "before_pixels": 4096,
+          "before_rgba_bytes": 16384,
+          "max_decoded_pixels": 40000000
+        },
+        "dimension_policy": "strict",
+        "dimensions_changed": false,
+        "file_path": "sample.png",
+        "histograms": {
+          "alpha_delta": [
+            4096,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "bins": 16,
+          "blue_delta": [
+            3567,
+            0,
+            0,
+            529,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "brightness_delta": [
+            4096,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "green_delta": [
+            3567,
+            0,
+            0,
+            529,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "red_delta": [
+            3567,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            529,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "hotspot_navigation": {
+          "count": 1,
+          "focus_artifacts": [
+            "overlay",
+            "heatmap",
+            "contact_sheet"
+          ],
+          "order": [
+            "hotspot-1"
+          ],
+          "selected_id": "hotspot-1"
+        },
+        "hotspots": [
+          {
+            "bbox": {
+              "height": 23,
+              "width": 23,
+              "x": 21,
+              "y": 21
+            },
+            "centroid": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "changed_pixel_percentage": 12.915,
+            "id": "hotspot-1",
+            "label": "Hotspot 1",
+            "pixel_count": 529,
+            "severity": "high",
+            "summary": "High image change covering 12.9% of pixels in the center region."
+          }
+        ],
+        "kind": "asset_diff",
+        "mean_absolute_error": 8.072,
+        "mime_type": "image/png",
+        "pixel_threshold": 16,
+        "provider": "image",
+        "raw_changed_pixels": 529,
+        "region_min_area": 4,
+        "root_mean_squared_error": 28.806,
+        "ssim": null,
+        "ssim_available": false,
+        "status": "compared",
+        "summary": "Image changed substantially: 12.9% of pixels differ. Dimensions unchanged. Most changes are concentrated in the center region.",
+        "warnings": []
+      }
+    }
+  }
+]

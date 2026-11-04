@@ -84,7 +84,8 @@ export class DiffSurfaceController {
 
   forFile(folderUri: string, relativePath: string): OpenedDiffContext | undefined {
     for (const context of this.openDiffContexts.values()) {
-      if (context.mode === "full" && context.folderUri === folderUri && context.relativePath === relativePath) {
+      if (context.mode === "full" && context.folderUri === folderUri && context.relativePath === relativePath
+          && this.openDiffContexts.get(context.modifiedUri.toString()) === context) {
         return context;
       }
     }
@@ -155,7 +156,9 @@ export class DiffSurfaceController {
       return;
     }
     if (mode === "semanticOnly" && !file?.diff) {
-      void vscode.window.showInformationMessage("IntentumDiff: semantic-only diff needs a ready semantic review; opening full diff.");
+      // The full diff opens regardless, so this is narration of a successful fallback.
+      // Status bar, not a notification. (#24)
+      vscode.window.setStatusBarMessage("IntentumDiff: showing full diff while the semantic review finishes…", 3000);
     }
     await this.openFullNativeDiff(filePayload, file?.diff, baseUri, modifiedUri, ref, title);
   }

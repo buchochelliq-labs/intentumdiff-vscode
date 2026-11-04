@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "vsix_sha256": "fb7a109b9b54fc909d9fc146269464d8f1c34735e85441fdfa9a957d51d22f9d",
+    "extension_version": "0.0.2-beta.1",
+    "extension_commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+    "vscode_version": "1.138.0",
+    "python_commit": "d3fa0d0e480a74e0695d0f73a0133d2c42379b9b",
+    "core_commit": "2e58c19ca9d37a9a9c4d7ee96750af1a416c2765",
+    "mode": "installed VSIX bytes loaded by VS Code test host; external real CLI"
+  },
+  "status": "awaiting_independent_visual_review",
+  "captures": [
+    {
+      "file": "asset-dark.png",
+      "sha256": "623dafbe39e00987d18aac796ca2ac616e7ba0e3b51077c2cde7ed0a99f969bf",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:04.271Z"
+    },
+    {
+      "file": "asset-high-contrast.png",
+      "sha256": "71a9111952296ffc5f4a20cc9b66b3d8256bba1ab1806c0960f511cac2c5fe64",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:07.488Z"
+    },
+    {
+      "file": "asset-light.png",
+      "sha256": "0806f224a9786927f95c8a09651113f274553ecec2a0b41e4d2e85ce3fef3670",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:05.869Z"
+    },
+    {
+      "file": "asset-narrow.png",
+      "sha256": "128ef72f82e0e108f493e775ee4ad4fc96125a3c96f540523e1a5f389900fc6c",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:09.151Z"
+    },
+    {
+      "file": "edit.js.png",
+      "sha256": "a43b3181176587181fcabe1c7d32eca7da390d5c083a2e1c9764ab0f075bb232",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:01.555Z"
+    },
+    {
+      "file": "edit.py.png",
+      "sha256": "52b131d272931b12de76d05b14790ea3d210fdb9fe590ee3c744c447c78f6ab8",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:43:52.124Z"
+    },
+    {
+      "file": "native-diff.png",
+      "sha256": "047d4e1b858e001973775cbc1bd03296515b27d01736d4413c1f87f4be123262",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:15.127Z"
+    },
+    {
+      "file": "pending-to-ready.png",
+      "sha256": "c34e453904ff7669c6b419ed34e5b3c33efcf79501e8a67a5e922e1ae6addfb5",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:43:50.205Z"
+    },
+    {
+      "file": "recovered-review.png",
+      "sha256": "e7ffa096ea4c51ca351dc34281e920b6459c274ed276a844dc34d1dc4d9f2820",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:19.207Z"
+    },
+    {
+      "file": "source-codelens.png",
+      "sha256": "8460c1fbfcdc11e925a4de23d8faced3663cfd1abe3cddb1dedf92d29f1dd77b",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:11.011Z"
+    },
+    {
+      "file": "workflow.gif",
+      "sha256": "7bb3499e3e2557d5cbfc9f8077c889cbd974f5d54891c9afdbf35f625e383425",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:26.414Z"
+    },
+    {
+      "file": "workflow.mp4",
+      "sha256": "91bae8b8afd4bc88d10f3f52a5c4df8967b8a4205c381affb6c7bed061fe83fd",
+      "extension_version": "0.0.2-beta.1",
+      "commit": "53ddf256d5b567fe618a01340ee3571a291e0158",
+      "captured_at": "2026-09-20T20:44:25.701Z"
+    }
+  ]
+}

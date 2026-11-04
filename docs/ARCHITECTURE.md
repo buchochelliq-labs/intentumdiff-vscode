@@ -2,17 +2,15 @@
 
 ## Topology
 
-```
-extension (TypeScript) ──spawns──► intentumdiff-live-server (native, bundled)
-                                        │ links in-process
-                                        ▼
-                                  intentumdiff-core (the engine)
-```
+The extension starts the external Rust `intentumdiff-live-server` by default.
+Rust owns semantic analysis, protocol handlers and asset processing; the extension
+renders the engine's results. Legacy Python transport requires explicit
+`intentumdiff.liveServer.engine = "python"` selection.
 
-The extension never computes semantics: it spawns the bundled native
-[live-server](https://github.com/buchochelliq-labs/intentumdiff-live-server) and renders what
-the engine serves. The VSIX bundles the native binary + the parser components per platform —
-self-contained, no Python.
+The VSIX contains the extension and review assets. It does not bundle Python,
+a native live-server binary, or parser components. Configure `intentumdiff.executable`
+when the external Rust server is not on PATH. Its verified parser components must
+remain next to it in `wasm/`. There is no automatic Python fallback.
 
 ## Surfaces (native-first)
 

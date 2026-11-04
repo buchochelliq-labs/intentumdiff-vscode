@@ -23,8 +23,8 @@ export interface DiagnosticsParserCall {
   version: string;
   trusted: boolean;
   status: string;
-  fuelConsumed: number;
-  totalFuelConsumed: number;
+  fuelConsumed?: number;
+  totalFuelConsumed?: number;
   fuelBudget?: number;
   fuelUsedPercent?: number;
   fuelPerKb?: number;
@@ -98,7 +98,7 @@ export function fuelSummaryForDiff(diff: SemanticDiff | undefined, fuelPolicy: R
 export function parserCallsForDiff(diff: SemanticDiff | undefined): DiagnosticsParserCall[] {
   const telemetry = recordField(diff?.metadata?.engine_telemetry);
   return arrayRecords(telemetry?.calls).map((call) => {
-    const fuelConsumed = numberField(call.fuel_consumed) ?? 0;
+    const fuelConsumed = numberField(call.fuel_consumed);
     const inputBytes = numberField(call.input_bytes);
     const inputLines = numberField(call.input_lines);
     return {
@@ -115,8 +115,8 @@ export function parserCallsForDiff(diff: SemanticDiff | undefined): DiagnosticsP
       totalFuelConsumed: numberField(call.total_fuel_consumed) ?? fuelConsumed,
       fuelBudget: numberField(call.fuel_budget),
       fuelUsedPercent: numberField(call.max_fuel_used_percent) ?? numberField(call.fuel_used_percent),
-      fuelPerKb: fuelConsumed / Math.max((inputBytes ?? 0) / 1024, 1),
-      fuelPerLine: fuelConsumed / Math.max(inputLines ?? 0, 1),
+      fuelPerKb: fuelConsumed === undefined ? undefined : fuelConsumed / Math.max((inputBytes ?? 0) / 1024, 1),
+      fuelPerLine: fuelConsumed === undefined ? undefined : fuelConsumed / Math.max(inputLines ?? 0, 1),
       inputBytes,
       inputLines,
     };
@@ -185,18 +185,31 @@ export function createDiagnosticsNonce(): string {
   return result;
 }
 
+function measuredFuel(value: number, calls: DiagnosticsParserCall[], metric: "peak" | "total"): string {
+  const measured = calls.some(call => (metric === "peak" ? call.fuelConsumed : call.totalFuelConsumed) !== undefined);
+  return measured ? formatFuel(value) : calls.length ? "Unmetered" : "No fuel measurement";
+}
+
+function fuelPolicyLabel(file: DiagnosticsReportFile): string {
+  if (file.summary.policyExceeded) return file.summary.policyReasons.join(", ") || "Fuel hotspot reported";
+  if (!file.parserCalls.length) return "No fuel measurement";
+  if (!file.parserCalls.some(call => call.fuelConsumed !== undefined)) return "Unmetered";
+  return file.parserCalls.every(call => call.fuelConsumed !== undefined)
+    ? "within policy" : "within policy for measured calls; other calls unmetered";
+}
+
 export function renderDiagnosticsReportHtml(report: DiagnosticsReport, options: { nonce: string; cspSource: string }): string {
   const rows = report.files.map((file) => `
     <article class="file ${file.summary.policyExceeded ? "hot" : ""}">
       <header><strong>${escapeHtml(file.relativePath)}</strong><span>${escapeHtml(file.language)}</span></header>
       <div class="metrics">
-        <span>${escapeHtml(formatFuel(file.summary.peakFuel))}<small>peak</small></span>
-        <span>${escapeHtml(formatFuel(file.summary.totalFuel))}<small>total</small></span>
+        <span>${escapeHtml(measuredFuel(file.summary.peakFuel, file.parserCalls, "peak"))}<small>peak</small></span>
+        <span>${escapeHtml(measuredFuel(file.summary.totalFuel, file.parserCalls, "total"))}<small>total</small></span>
         <span>${file.summary.hotspotCount}<small>hotspots</small></span>
         <span>${file.history.length}<small>samples</small></span>
       </div>
-      <p>${escapeHtml(file.summary.policyReasons.join(", ") || "within policy")}</p>
-      <ul>${file.parserCalls.slice(0, 5).map((call) => `<li title="${escapeHtml(call.plugin)}">${escapeHtml(`${call.language} ${call.func} ${formatFuel(call.fuelConsumed)} fuel ${call.provenance} ${call.engine}${call.version ? ` ${call.version}` : ""}`)}</li>`).join("")}</ul>
+      <p>${escapeHtml(fuelPolicyLabel(file))}</p>
+      <ul>${file.parserCalls.slice(0, 5).map((call) => `<li title="${escapeHtml(call.plugin)}">${escapeHtml(`${call.language} ${call.func} ${call.fuelConsumed === undefined ? "Unmetered" : `${formatFuel(call.fuelConsumed)} fuel`} ${call.provenance} ${call.engine}${call.version ? ` ${call.version}` : ""}`)}</li>`).join("")}</ul>
     </article>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${options.cspSource} data:; style-src 'nonce-${options.nonce}';">
@@ -206,8 +219,8 @@ export function renderDiagnosticsReportHtml(report: DiagnosticsReport, options: 
   </style><title>IntentumDiff Diagnostics</title></head><body><main>
     <h1>IntentumDiff Diagnostics</h1>
     <section class="summary"><h2>Fuel policy</h2><p>Generated ${escapeHtml(report.generatedAt)}</p><div class="metrics">
-      <span>${escapeHtml(formatFuel(report.aggregate.peakFuel))}<small>peak</small></span>
-      <span>${escapeHtml(formatFuel(report.aggregate.totalFuel))}<small>total</small></span>
+      <span>${escapeHtml(measuredFuel(report.aggregate.peakFuel, report.files.flatMap(file => file.parserCalls), "peak"))}<small>peak</small></span>
+      <span>${escapeHtml(measuredFuel(report.aggregate.totalFuel, report.files.flatMap(file => file.parserCalls), "total"))}<small>total</small></span>
       <span>${report.aggregate.hotspotCount}<small>hotspots</small></span>
       <span>${report.files.length}<small>files</small></span>
     </div></section>
@@ -221,8 +234,8 @@ export function diagnosticsReportMarkdown(report: DiagnosticsReport): string {
     "",
     `Generated: ${report.generatedAt}`,
     "",
-    `- Peak fuel: ${formatFuel(report.aggregate.peakFuel)}`,
-    `- Total fuel: ${formatFuel(report.aggregate.totalFuel)}`,
+    `- Peak fuel: ${measuredFuel(report.aggregate.peakFuel, report.files.flatMap(file => file.parserCalls), "peak")}`,
+    `- Total fuel: ${measuredFuel(report.aggregate.totalFuel, report.files.flatMap(file => file.parserCalls), "total")}`,
     `- Hotspots: ${report.aggregate.hotspotCount}`,
     `- Policy: peak>${formatFuel(report.policy.peakFuelWarning)}, perKB>${formatFuel(report.policy.fuelPerKbWarning)}, perLine>${formatFuel(report.policy.fuelPerLineWarning)}`,
     "",
@@ -234,15 +247,15 @@ export function diagnosticsReportMarkdown(report: DiagnosticsReport): string {
       `### ${file.relativePath}`,
       "",
       `- Language: ${file.language}`,
-      `- Peak fuel: ${formatFuel(file.summary.peakFuel)}`,
-      `- Total fuel: ${formatFuel(file.summary.totalFuel)}`,
+      `- Peak fuel: ${measuredFuel(file.summary.peakFuel, file.parserCalls, "peak")}`,
+      `- Total fuel: ${measuredFuel(file.summary.totalFuel, file.parserCalls, "total")}`,
       `- Hotspots: ${file.summary.hotspotCount}`,
-      `- Policy: ${file.summary.policyReasons.join(", ") || "within policy"}`,
+      `- Policy: ${fuelPolicyLabel(file)}`,
       `- History samples: ${file.history.map(formatFuel).join(", ") || "none"}`,
       "",
     );
     for (const call of file.parserCalls.slice(0, 5)) {
-      lines.push(`  - ${call.language} ${call.func}: ${formatFuel(call.fuelConsumed)} fuel, ${call.provenance}, ${call.engine}${call.version ? `, ${call.version}` : ""}, ${call.plugin}`);
+      lines.push(`  - ${call.language} ${call.func}: ${call.fuelConsumed === undefined ? "Unmetered" : `${formatFuel(call.fuelConsumed)} fuel`}, ${call.provenance}, ${call.engine}${call.version ? `, ${call.version}` : ""}, ${call.plugin}`);
     }
     lines.push("");
   }

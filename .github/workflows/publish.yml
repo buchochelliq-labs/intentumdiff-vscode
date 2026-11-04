@@ -1,21 +1,40 @@
 name: Publish extension
 
-# Packages the extension and publishes it to the VS Code Marketplace and Open VSX.
+# Promotes exactly the VSIX already installed and reviewed by CI.
 #
-# Tag-driven for a real release; workflow_dispatch offers a dry run that packages and
-# validates the VSIX WITHOUT publishing, so the packaging path can be exercised before
-# any token is configured or any version is burned.
+# Tag-driven, fail closed: supply an approved acceptance run, artifact ID, source SHA
+# and expected SHA-256 through repository variables or explicit dry-run inputs.
 on:
+  pull_request:
+    paths: ["package.json", "package-lock.json", ".vscodeignore", ".github/workflows/publish.yml"]
   push:
     tags:
       - "v[0-9]*.[0-9]*.[0-9]*"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Package and validate only - do not publish"
+        description: "Verify reviewed VSIX without publishing"
         required: false
         default: true
         type: boolean
+      candidate_run_id:
+        description: "Successful installed-runtime acceptance run ID"
+        type: string
+      candidate_artifact_id:
+        description: "Exact reviewed rc-candidate-vsix artifact ID"
+        type: string
+      candidate_sha256:
+        description: "Expected reviewed VSIX SHA-256"
+        type: string
+      candidate_source_sha:
+        description: "Reviewed source commit SHA"
+        type: string
+      candidate_media_artifact_id:
+        description: "Independently reviewed release-media artifact ID from the acceptance run (optional for 0.0.2; required again in 0.0.3, #103)"
+        type: string
+      candidate_media_sha256:
+        description: "SHA-256 of the approved release-media artifact ZIP"
+        type: string
 
 # Deny by default (zizmor excessive-permissions): each job asks for exactly what it
 # needs rather than inheriting a read-write repository default.
@@ -23,28 +42,36 @@ permissions: {}
 
 jobs:
   package:
-    name: Package VSIX
+    name: Verify reviewed VSIX
+    # Only promote exact bytes that passed installed-runtime acceptance.
+    # The real-runtime workflow handles builds for PRs. Release workflows never rebuild.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
+      actions: read
+    env:
+      REVIEWED_RUN_ID: ${{ inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID }}
+      REVIEWED_ARTIFACT_ID: ${{ inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID }}
+      REVIEWED_VSIX_SHA256: ${{ inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256 }}
+      REVIEWED_SOURCE_SHA: ${{ inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA }}
+      REVIEWED_MEDIA_ARTIFACT_ID: ${{ inputs.candidate_media_artifact_id || vars.INTENTUMDIFF_MEDIA_ARTIFACT_ID }}
+      REVIEWED_MEDIA_SHA256: ${{ inputs.candidate_media_sha256 || vars.INTENTUMDIFF_MEDIA_SHA256 }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "22"
-      - name: Install
-        run: npm ci
-
-      - name: Lint and test before packaging
+      - name: Install and test release source
         run: |
+          npm ci
           npm run lint
           npm run test
 
-      # A tag must agree with package.json, or the Marketplace listing and the git
-      # history disagree about what shipped. Fail here rather than after publishing.
       - name: Tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -52,37 +79,117 @@ jobs:
         run: |
           pkg=$(node -p "require('./package.json').version")
           tag="${GIT_TAG#v}"
-          echo "package.json=$pkg  tag=$tag"
           if [ "$pkg" != "$tag" ]; then
             echo "::error::tag $tag does not match package.json $pkg" >&2
             exit 1
           fi
 
-      - name: Package
-        run: npm run vsix
-
-      - name: Verify the VSIX
+      - name: Require successful installed-runtime review and exact artifact provenance
+        shell: bash
         run: |
-          shopt -s nullglob
-          vsix=(*.vsix)
-          if [ "${#vsix[@]}" -ne 1 ]; then
-            echo "::error::expected exactly one .vsix, found ${#vsix[@]}" >&2
-            exit 1
-          fi
-          echo "built ${vsix[0]} ($(du -h "${vsix[0]}" | cut -f1))"
-          # The extension entry point must actually be inside the archive; vsce will
-          # happily package an empty build if compilation silently produced nothing.
-          # Read the path from package.json rather than hardcoding it: `main` is
-          # ./out/src/extension.js here, not ./out/extension.js, and a hardcoded guess
-          # fails the build for the wrong reason the moment the layout changes.
+          set -euo pipefail
+          [[ "$REVIEWED_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::reviewed run ID is required" >&2; exit 1; }
+          [[ "$REVIEWED_ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::reviewed artifact ID is required" >&2; exit 1; }
+          [[ "$REVIEWED_VSIX_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::expected VSIX SHA256 is required" >&2; exit 1; }
+          [[ "$REVIEWED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::reviewed source commit is required" >&2; exit 1; }
+
+          run="repos/$GITHUB_REPOSITORY/actions/runs/$REVIEWED_RUN_ID"
+          artifact="repos/$GITHUB_REPOSITORY/actions/artifacts/$REVIEWED_ARTIFACT_ID"
+          [ "$(gh api "$run" --jq '.conclusion')" = "success" ] || { echo "::error::reviewed run did not succeed" >&2; exit 1; }
+          [ "$(gh api "$run" --jq '.name')" = "Packaged extension real-runtime acceptance" ] || { echo "::error::not the installed-runtime workflow" >&2; exit 1; }
+          [ "$(gh api "$run" --jq '.head_sha')" = "$REVIEWED_SOURCE_SHA" ] || { echo "::error::reviewed run source mismatch" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.name')" = "rc-candidate-vsix" ] || { echo "::error::wrong reviewed artifact name" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.workflow_run.id')" = "$REVIEWED_RUN_ID" ] || { echo "::error::artifact does not belong to reviewed run" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.workflow_run.head_sha')" = "$REVIEWED_SOURCE_SHA" ] || { echo "::error::artifact source mismatch" >&2; exit 1; }
+          [ "$(gh api "$artifact" --jq '.expired')" = "false" ] || { echo "::error::reviewed artifact expired" >&2; exit 1; }
+          reviewed_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$REVIEWED_SOURCE_SHA" --jq '.tree.sha')
+          tag_tree=$(git rev-parse HEAD^{tree})
+          [ "$reviewed_tree" = "$tag_tree" ] || { echo "::error::tag source tree differs from reviewed candidate" >&2; exit 1; }
+
+      # Historic committed media is an inventory only: editing it to reference the
+      # candidate SHA would change the reviewed source tree, invalidating the
+      # earlier tree-equality check. Release media must instead be retained as
+      # independently reviewed, immutable bytes from that exact CI run.
+      #
+      # 0.0.2: no workflow captures rc-release-media yet (#103), so the gate is
+      # deferred to 0.0.3. Supplied media is still fully verified; omitted media
+      # is recorded in the run summary. 0.0.3: drop this `if:` to require it again.
+      - name: Record that release media was not supplied (deferred to 0.0.3, #103)
+        if: env.REVIEWED_MEDIA_ARTIFACT_ID == ''
+        shell: bash
+        run: |
+          echo "::notice::No reviewed release-media artifact supplied; the media gate is deferred to 0.0.3 (#103)."
+          echo "### Release media not verified (deferred to 0.0.3, #103)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download and verify separately reviewed release media
+        if: env.REVIEWED_MEDIA_ARTIFACT_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_MEDIA_ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::approved release-media artifact ID required" >&2; exit 1; }
+          [[ "$REVIEWED_MEDIA_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::approved media artifact SHA-256 required" >&2; exit 1; }
+          media="repos/$GITHUB_REPOSITORY/actions/artifacts/$REVIEWED_MEDIA_ARTIFACT_ID"
+          [ "$(gh api "$media" --jq '.name')" = "rc-release-media" ] || { echo "::error::not the reviewed release-media artifact" >&2; exit 1; }
+          [ "$(gh api "$media" --jq '.workflow_run.id')" = "$REVIEWED_RUN_ID" ] || { echo "::error::media not from reviewed acceptance run" >&2; exit 1; }
+          [ "$(gh api "$media" --jq '.workflow_run.head_sha')" = "$REVIEWED_SOURCE_SHA" ] || { echo "::error::media source mismatches reviewed commit" >&2; exit 1; }
+          [ "$(gh api "$media" --jq '.expired')" = "false" ] || { echo "::error::approved media artifact expired" >&2; exit 1; }
+          gh api "$media/zip" > "$RUNNER_TEMP/reviewed-media.zip"
+          printf '%s  %s\n' "$REVIEWED_MEDIA_SHA256" "$RUNNER_TEMP/reviewed-media.zip" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/reviewed-media"
+          # Reject traversal or absolute paths before extracting independently
+          # supplied media. A digest match is not permission to write outside.
+          python3 - "$RUNNER_TEMP/reviewed-media.zip" "$RUNNER_TEMP/reviewed-media" <<'PYMEDIA'
+          from pathlib import Path
+          import sys, zipfile
+          destination = Path(sys.argv[2])
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              names = archive.namelist()
+              if not names or any(
+                  Path(name).is_absolute() or
+                  any(part in ("", "..") for part in Path(name).parts)
+                  for name in names
+              ):
+                  raise SystemExit("unsafe or empty reviewed release-media archive")
+              archive.extractall(destination)
+          PYMEDIA
+          test -f "$RUNNER_TEMP/reviewed-media/manifest.json" || {
+            echo "::error::approved media artifact lacks manifest.json" >&2; exit 1;
+          }
+          python3 scripts/validate_release_media_manifest.py "$RUNNER_TEMP/reviewed-media/manifest.json" \
+            --expected-version "$(node -p "require('./package.json').version")" \
+            --expected-commit "$REVIEWED_SOURCE_SHA"
+
+      - name: Download and verify reviewed VSIX without rebuilding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reviewed-vsix"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$REVIEWED_ARTIFACT_ID/zip" > "$RUNNER_TEMP/reviewed-vsix.zip"
+          unzip -q "$RUNNER_TEMP/reviewed-vsix.zip" -d "$RUNNER_TEMP/reviewed-vsix"
+          pkg=$(node -p "require('./package.json').version")
+          vsix="intentumdiff-$pkg.vsix"
+          test -f "$RUNNER_TEMP/reviewed-vsix/$vsix"
+          [ "$(find "$RUNNER_TEMP/reviewed-vsix" -maxdepth 1 -type f -name '*.vsix' | wc -l)" -eq 1 ]
+          cp "$RUNNER_TEMP/reviewed-vsix/$vsix" "$vsix"
+          printf '%s  %s\n' "$REVIEWED_VSIX_SHA256" "$vsix" | sha256sum --check -
           entry=$(node -p "require('./package.json').main.replace(/^[.][/]/, '')")
-          echo "package.json main -> $entry"
-          unzip -l "${vsix[0]}" | grep -q "extension/${entry}" \
-            || { echo "::error::VSIX contains no compiled entry point at extension/${entry}" >&2
-                 echo "--- archive contents ---" >&2
-                 unzip -l "${vsix[0]}" | head -40 >&2
-                 exit 1; }
-          sha256sum "${vsix[0]}" | tee "${vsix[0]}.sha256"
+          unzip -Z1 "$vsix" | grep -Fxq "extension/$entry" || { echo "::error::reviewed VSIX lacks compiled entry" >&2; exit 1; }
+          # 0.0.2 ships on the pre-release channel: the reviewed bytes must say so.
+          unzip -p "$vsix" extension.vsixmanifest | grep -q 'Id="Microsoft.VisualStudio.Code.PreRelease" Value="true"' \
+            || { echo "::error::reviewed VSIX is not packaged as a pre-release" >&2; exit 1; }
+          python3 - "$vsix" <<'PY'
+          import sys, zipfile
+          forbidden = ("extension/.github/", "extension/.claude/", "extension/scripts/",
+                       "extension/review-shell/", "extension/docs/", "extension/out/test/")
+          forbidden_files = {"extension/AGENTS.md", "extension/.nvmrc", "extension/.gitignore",
+                             "extension/release-media/manifest.json"}
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              leaked = [name for name in archive.namelist()
+                        if name.startswith(forbidden) or name in forbidden_files]
+          if leaked:
+              raise SystemExit("Development/audit files leaked into verified VSIX: " + ", ".join(leaked))
+          PY
+          printf '%s  %s\n' "$REVIEWED_VSIX_SHA256" "$vsix" > "$vsix.sha256"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -92,9 +199,59 @@ jobs:
             *.vsix.sha256
           if-no-files-found: error
 
+  scan:
+    name: Malware scan the VSIX
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: vsix
+
+      - name: Scan the packaged VSIX with Microsoft Defender
+        # A user reported Defender flagging the 0.0.1 download (#20). Three separate checks
+        # since have found nothing, and the artefact contains no native binaries at all - so
+        # the likeliest causes are SmartScreen reputation or a cloud ML heuristic on a
+        # first-seen file, neither of which a scan here can rule out.
+        #
+        # What this step CAN do is make sure we never learn about a true positive from a user
+        # again. windows-latest ships the same Defender engine that produced the report, so
+        # this is the same engine that produced the report, not a proxy for it.
+        #
+        # Deliberately placed between packaging and publishing: scanning the exact bytes that
+        # will be uploaded is the only version of this check worth having.
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem -Filter *.vsix | Select-Object -First 1
+          if (-not $vsix) { Write-Error "no .vsix to scan"; exit 1 }
+          Write-Host "scanning $($vsix.Name) ($($vsix.Length) bytes)"
+          Write-Host "sha256: $((Get-FileHash $vsix.FullName -Algorithm SHA256).Hash)"
+
+          $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $mp)) {
+            Write-Error "::error::MpCmdRun.exe not present on this runner - cannot certify scanned artifact"
+            exit 1
+          }
+
+          & $mp -SignatureUpdate | Out-Null
+          $out = & $mp -Scan -ScanType 3 -File $vsix.FullName 2>&1
+          $code = $LASTEXITCODE
+          $out | ForEach-Object { Write-Host $_ }
+
+          # MpCmdRun returns 0 for "no threats" and 2 when it finds something. Trusting the
+          # exit code alone has bitten before, so the output is checked too.
+          if ($code -ne 0 -or ($out -join "`n") -match "found (a )?threat|Threat  *:") {
+            Write-Error "Defender reported a threat in the VSIX - do NOT publish this build"
+            exit 1
+          }
+          Write-Host "no threats found"
+
   publish:
     name: Publish to Marketplace + Open VSX
-    needs: package
+    needs: [package, scan]
     # Only on a tag, and never on a dispatch asking for a dry run.
     if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
     runs-on: ubuntu-latest
@@ -103,41 +260,45 @@ jobs:
       contents: read
     environment: marketplace
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "22"
       - name: Install
         run: npm ci
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: vsix
 
       - name: Re-verify the downloaded checksum
         run: sha256sum --check ./*.vsix.sha256
 
+      # Both registries are required. Check both tokens before uploading anything,
+      # so a missing token cannot leave a release on one registry only.
+      - name: Require Marketplace and Open VSX tokens
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          missing=0
+          [ -n "$VSCE_PAT" ] || { echo "::error::VSCE_PAT is not set - add it to the 'marketplace' environment" >&2; missing=1; }
+          [ -n "$OVSX_PAT" ] || { echo "::error::OVSX_PAT is not set - add it to the 'marketplace' environment" >&2; missing=1; }
+          exit "$missing"
+
+      # --skip-duplicate on both uploads: if one registry failed, re-running the job
+      # completes the missing one instead of failing on the one already published.
       - name: Publish to the VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo "::error::VSCE_PAT is not set - add it to the 'marketplace' environment" >&2
-            exit 1
-          fi
-          npx vsce publish --packagePath ./*.vsix
+        run: npx vsce publish --pre-release --skip-duplicate --packagePath ./*.vsix
 
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          if [ -z "$OVSX_PAT" ]; then
-            echo "::warning::OVSX_PAT is not set - skipping Open VSX"
-            exit 0
-          fi
-
           # Open VSX requires the namespace to exist before anything can be published
           # into it, and it must equal package.json's `publisher` -- ovsx derives the
           # target from the VSIX itself, so a mismatch is not something a flag can fix.
@@ -158,4 +319,33 @@ jobs:
             exit 1
           fi
 
-          npx ovsx publish ./*.vsix --pat "$OVSX_PAT"
+          npx ovsx publish ./*.vsix --pre-release --skip-duplicate --pat "$OVSX_PAT"
+
+      - name: Verify Open VSX serves this version as a pre-release
+        run: |
+          set -euo pipefail
+          namespace=$(node -p "require('./package.json').publisher")
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          url="https://open-vsx.org/api/$namespace/$name/$version"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$url" -o ovsx.json; then
+              python3 - ovsx.json "$version" <<'PYOVSX'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          if data.get("version") != sys.argv[2]:
+              raise SystemExit(f"Open VSX serves {data.get('version')!r}, expected {sys.argv[2]!r}")
+          flag = data.get("preRelease")
+          if flag is False:
+              raise SystemExit("Open VSX lists this version, but not as a pre-release")
+          if flag is None:
+              print("::warning::Open VSX did not report preRelease; check the listing by hand")
+          print(f"Open VSX serves {sys.argv[2]} (preRelease={flag})")
+          PYOVSX
+              exit 0
+            fi
+            echo "attempt $attempt: $url not served yet"
+            sleep 20
+          done
+          echo "::error::Open VSX did not serve $namespace.$name $version within 10 minutes" >&2
+          exit 1

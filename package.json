@@ -2,7 +2,7 @@
   "name": "intentumdiff",
   "displayName": "IntentumDiff",
   "description": "Live semantic review that surfaces moved code, refactorings, and meaningful changes.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "buchochelliq-labs",
   "license": "MIT",
   "repository": {
@@ -721,9 +721,13 @@
         },
         "intentumdiff.liveServer.engine": {
           "type": "string",
-          "enum": ["auto", "native", "python"],
+          "enum": [
+            "auto",
+            "native",
+            "python"
+          ],
           "default": "auto",
-          "description": "Which live-server engine to spawn when intentumdiff.executable is unset: 'auto' prefers the bundled native server when present, 'native' requires it (falls back to python with a warning if missing), 'python' always uses the Python CLI. An explicit intentumdiff.executable always wins."
+          "description": "'auto' uses the Rust live-server only on platforms with a published native release (none in 0.0.2) and the Python runtime (intentumdiff-python) everywhere else. 'native' always uses the Rust live-server. 'python' always uses the Python runtime. A bundled native server or an explicit intentumdiff.executable path wins."
         },
         "intentumdiff.review.maxAutoRetries": {
           "type": "number",
@@ -930,31 +934,37 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "tsc -p ./ --noEmit",
     "test": "npm run compile && npm run test:unit",
-    "test:unit": "node --test out/test/baseUri.test.js out/test/config.test.js out/test/contentClass.test.js out/test/gitStatus.test.js out/test/mapper.test.js out/test/protocol.test.js out/test/reviewActionModel.test.js out/test/reviewModel.test.js out/test/reviewRefresh.test.js out/test/reviewTimelineModel.test.js out/test/reviewTree.test.js out/test/reviewWebviewModel.test.js out/test/liveServerLaunch.test.js out/test/intentCodeLens.test.js out/test/intentExplain.test.js out/test/intentLlmPrompt.test.js out/test/releaseNotes.test.js out/test/selectionRange.test.js out/test/semanticOnlyDiff.test.js out/test/themeColors.test.js",
+    "test:unit": "node --test out/test/*.test.js",
     "test:integration": "npm run compile && node out/test/integration/runTests.js",
     "test:semanticdiff-comparison": "npm run compile && node out/test/comparison/runComparison.js",
-    "vsix": "npm run compile && vsce package --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/blob/HEAD --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/raw/HEAD",
-    "publish:vsce": "vsce publish --packagePath",
-    "publish:ovsx": "ovsx publish",
-    "dev:watch": "npm run watch"
+    "vsix": "npm run compile && vsce package --pre-release --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/blob/HEAD --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/raw/HEAD",
+    "release:dry-run": "powershell -ExecutionPolicy Bypass -File ../../scripts/verify-vscode-extension-release.ps1",
+    "install:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/install-vscode-extension.ps1",
+    "sync:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/sync-local-dev.ps1",
+    "dev:watch": "npm run watch",
+    "dev:host": "powershell -ExecutionPolicy Bypass -File ../../scripts/sync-local-dev.ps1 -OpenDevHost"
   },
   "devDependencies": {
     "@highlightjs/cdn-assets": "^11.11.1",
     "@types/jsdom": "^28.0.3",
-    "@types/node": "^26.1.2",
-    "@types/vscode": "1.90.0",
-    "@vscode/test-electron": "^3.1.0",
+    "@types/node": "^20.12.12",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.9.2",
-    "jsdom": "^24.1.3",
-    "ovsx": "1.1.0",
-    "typescript": "^7.0.2"
+    "jsdom": "^29.1.1",
+    "ovsx": "1.0.0",
+    "typescript": "^5.4.5"
   },
   "overrides": {
-    "tmp": "0.2.7"
+    "tmp": "0.2.7",
+    "js-yaml": "^4.3.0",
+    "undici": "^7.29.0",
+    "brace-expansion": "^5.0.9",
+    "fast-uri": "^3.1.5"
   },
   "capabilities": {
     "untrustedWorkspaces": {

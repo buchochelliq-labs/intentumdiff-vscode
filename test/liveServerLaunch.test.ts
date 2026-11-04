@@ -1,5 +1,6 @@
 // #100 Phase C — the native-by-default launch chooser. Pure functions from config.ts (vscode-free).
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as path from "node:path";
 
@@ -8,6 +9,7 @@ import {
   chooseLiveServerLaunch,
   enoentFailureDetails,
   normalizeLiveServerEngine,
+  VERIFIED_NATIVE_PLATFORMS,
 } from "../src/config";
 
 const BUNDLED = "C:/ext/native/intentumdiff-live-server.exe";
@@ -15,11 +17,11 @@ const BUNDLED = "C:/ext/native/intentumdiff-live-server.exe";
 test("explicit user executable always wins over the bundled native server", () => {
   assert.deepEqual(
     chooseLiveServerLaunch("C:/custom/intentumdiff-live-server.exe", "auto", BUNDLED),
-    { kind: "python" },
+    { kind: "native", executable: "C:/custom/intentumdiff-live-server.exe" },
   );
   assert.deepEqual(
     chooseLiveServerLaunch("/workspace/.venv/bin/intentumdiff", "native", BUNDLED),
-    { kind: "python" },
+    { kind: "native", executable: "/workspace/.venv/bin/intentumdiff" },
   );
 });
 
@@ -30,20 +32,31 @@ test("auto prefers the bundled native server when present", () => {
   });
 });
 
-test("auto without a bundle stays on the python engine", () => {
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined), { kind: "python" });
+test("auto without a bundle launches the external Rust server on a platform with a published native release", () => {
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, "linux-x64", ["linux-x64"]), { kind: "native", executable: "intentumdiff-live-server" });
+});
+
+test("0.0.2 publishes no native release, so auto uses Python on every platform (live-server#25)", () => {
+  assert.deepEqual(VERIFIED_NATIVE_PLATFORMS, []);
+  for (const platform of ["linux-x64", "darwin-arm64", "darwin-x64", "win32-x64", "win32-arm64", "linux-arm64"]) {
+    assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, platform), { kind: "python" }, platform);
+  }
+  // A bundled binary, an explicit engine and an explicit executable still win everywhere.
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", BUNDLED, "win32-x64"), { kind: "native", executable: BUNDLED });
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined, "darwin-arm64"), { kind: "native", executable: "intentumdiff-live-server" });
+  assert.deepEqual(chooseLiveServerLaunch("/opt/ids", "auto", undefined, "darwin-arm64"), { kind: "native", executable: "/opt/ids" });
 });
 
 test("engine=python skips the bundle even when present", () => {
   assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "python", BUNDLED), { kind: "python" });
 });
 
-test("engine=native uses the bundle, degrades to python when missing", () => {
+test("engine=native uses the external Rust server when no bundle exists", () => {
   assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", BUNDLED), {
     kind: "native",
     executable: BUNDLED,
   });
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined), { kind: "python" });
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "native", undefined), { kind: "native", executable: "intentumdiff-live-server" });
 });
 
 test("normalizeLiveServerEngine coerces unknown values to auto", () => {
@@ -97,6 +110,8 @@ test("ENOENT on the default python CLI keeps the workspace .venv suggestion", ()
     candidate,
   );
   assert.match(details.message, /Install IntentumDiff into the workspace \.venv/);
+  // 0.0.2's runtime is a pre-release; plain `pip install` would pick the older 0.0.1.
+  assert.match(details.message, /pip install --pre intentumdiff-python/);
   assert.equal(details.suggestedExecutable, candidate);
 });
 
@@ -111,3 +126,58 @@ test("bundledLiveServerPath probes <ext>/native/<exe> with an injected exists", 
   );
   assert.equal(bundledLiveServerPath("C:/ext", () => false), undefined);
 });
+
+// The monorepo root, 4 hops up from out/test/. Absent in the extracted intentumdiff-vscode repo
+// (#82 split), where there is no crate or staging script to check against.
+const repoRoot = path.join(__dirname, "..", "..", "..", "..");
+
+/** What `bundledLiveServerPath` actually probes for, asked of the function rather than of a
+ *  copy of its platform expression — a copy would drift with the thing it is meant to pin. */
+function probedBinaryName(): string {
+  let probed = "";
+  bundledLiveServerPath("C:/ext", (candidate) => {
+    probed = candidate;
+    return false;
+  });
+  return path.basename(probed, path.extname(probed));
+}
+
+// This exact mismatch shipped: the staged binary kept its pre-rebrand `intentdiff-` name while
+// the lookup had moved to `intentumdiff-`, so the extension quietly fell back to the python
+// engine and every install believed it was running native.
+test("the bundled binary name is the one the native live-server crate builds", () => {
+  const cargoPath = path.join(repoRoot, "crates", "live-server", "Cargo.toml");
+  if (!existsSync(cargoPath)) {
+    return;
+  }
+  const built = /\[\[bin\]\][\s\S]*?name\s*=\s*"([^"]+)"/.exec(readFileSync(cargoPath, "utf8"));
+  assert.ok(built, "crates/live-server/Cargo.toml declares no [[bin]] name");
+  assert.equal(
+    probedBinaryName(),
+    built[1],
+    "the extension probes for a binary name the live-server crate does not build",
+  );
+});
+
+test("the staging scripts copy the binary name the extension probes for", () => {
+  const scripts = ["sync-local-dev.ps1", "install-vscode-extension.ps1"]
+    .map((name) => path.join(repoRoot, "scripts", name))
+    .filter((candidate) => existsSync(candidate));
+  if (scripts.length === 0) {
+    return;
+  }
+  const expected = `${probedBinaryName()}.exe`;
+  for (const script of scripts) {
+    const source = readFileSync(script, "utf8");
+    assert.ok(
+      source.includes(expected),
+      `${path.basename(script)} does not stage ${expected}`,
+    );
+  }
+});
+
+ test("missing external native server never suggests Python fallback", () => {
+ const details = enoentFailureDetails("intentumdiff-live-server", {kind:"native",userOverride:false}, undefined);
+ assert.match(details.message, /external Rust/);
+ assert.doesNotMatch(details.message, /python|\\.venv|Reinstall the IntentumDiff extension/i);
+ });

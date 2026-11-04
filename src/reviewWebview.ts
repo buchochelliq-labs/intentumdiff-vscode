@@ -93,7 +93,12 @@ export class ReviewPanelWebviewController implements vscode.Disposable {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly handleMessage: MessageHandler,
+    private readonly onActiveChange: () => void = () => {},
   ) {}
+
+  get activeModel(): ReviewPanelModel | undefined {
+    return this.panel?.active ? this.currentModel : undefined;
+  }
 
   open(model: ReviewPanelModel): void {
     this.currentModel = model;
@@ -118,9 +123,11 @@ export class ReviewPanelWebviewController implements vscode.Disposable {
             void this.handleMessage(message);
           }
         }),
+        this.panel.onDidChangeViewState(() => this.onActiveChange()),
         this.panel.onDidDispose(() => {
           this.panel = undefined;
           this.currentModel = undefined;
+          this.onActiveChange();
         }),
       );
     } else {
@@ -128,6 +135,7 @@ export class ReviewPanelWebviewController implements vscode.Disposable {
     }
     this.panel.title = `IntentumDiff: ${model.file.relativePath}`;
     this.render();
+    this.onActiveChange();
   }
 
   postPanelCommand(
@@ -142,6 +150,7 @@ export class ReviewPanelWebviewController implements vscode.Disposable {
       this.currentModel = model;
     }
     this.render();
+    this.onActiveChange();
   }
 
   dispose(): void {

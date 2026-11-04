@@ -13,6 +13,21 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    # jsdom >= 30 depends on undici 8, which calls worker_threads.markAsUncloneable -
+    # a builtin added in Node 22.10.0 and never backported to 20. CI runs Node 20
+    # because that is what the VS Code 1.90 extension host provides
+    # (engines.vscode ^1.90.0 -> Electron 29.4.0 -> Node 20.9.0), so jsdom 30 cannot
+    # run on the runtime this extension actually ships to.
+    #
+    # No VS Code release offers a middle ground: the newest Node 22 any of them bundles
+    # is 22.22.1, one patch below jsdom 30's ^22.22.2 floor. Revisit when engines.vscode
+    # moves to ^1.123.0 (Node 24).
+    #
+    # A version range is used rather than `update-types: semver-major` because the latter
+    # would also have blocked the 24 -> 29 bump this repo now depends on.
+    ignore:
+      - dependency-name: "jsdom"
+        versions: [">=30"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

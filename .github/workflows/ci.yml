@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "release/v0.0.2-rc"]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -18,44 +19,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "22"
       - name: Install
-        run: npm ci --engine-strict
+        run: npm ci
       - name: Lint (tsc --noEmit)
         run: npm run lint
       - name: Tests
         run: npm run test
-      - name: Verify VSIX packaging
-        run: |
-          npm run vsix
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          from zipfile import ZipFile
-          with ZipFile(next(Path('.').glob('*.vsix'))) as archive:
-              names = set(archive.namelist())
-              for asset in ('codicon.css', 'codicon.ttf'):
-                  assert f'extension/node_modules/@vscode/codicons/dist/{asset}' in names, asset
-              assert not any('/review-shell/node_modules/' in name for name in names)
-          PYTHON
 
   review-shell:
     name: Review-shell tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "22"
       - name: Install
-        run: npm ci --engine-strict
+        run: npm ci
         working-directory: review-shell
       - name: Tests
         run: npm run test

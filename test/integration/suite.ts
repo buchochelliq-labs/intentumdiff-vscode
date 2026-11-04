@@ -1,3 +1,4 @@
+import { buildLanguageSmokeFiles, LanguageSmokeFile } from "./runtimeConfig";
 import * as assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
@@ -11,11 +12,6 @@ interface FakeLogEntry {
   payload?: Record<string, unknown>;
 }
 
-interface LanguageSmokeFile {
-  language: string;
-  kind: "addition" | "deletion" | "modification" | "style" | "guardrail" | "parse" | "refactoring";
-  path: string;
-}
 
 interface TestReviewState {
   files: Array<{
@@ -56,9 +52,8 @@ async function integrationScenario(): Promise<void> {
   const fixture = requiredEnv("INTENTUMDIFF_VSCODE_FIXTURE");
   const logPath = requiredEnv("INTENTUMDIFF_VSCODE_LOG");
   const nodeExecutable = requiredEnv("INTENTUMDIFF_NODE_EXECUTABLE");
-  const repoRoot = requiredEnv("INTENTUMDIFF_REPO_ROOT");
   fs.rmSync(logPath, { force: true });
-  const languageSmokeFiles = buildLanguageSmokeFiles(readSupportedLanguages(repoRoot));
+  const languageSmokeFiles = buildLanguageSmokeFiles(readSupportedLanguages());
   await setupReviewFixture(fixture, languageSmokeFiles);
 
   await ensureWorkspaceFolder(fixture);
@@ -551,7 +546,7 @@ async function setupReviewFixture(fixture: string, languageSmokeFiles: LanguageS
   fs.writeFileSync(path.join(fixture, "binary.dat"), Buffer.from([0, 1, 2, 3]));
 }
 
-function readSupportedLanguages(repoRoot: string): string[] {
+function readSupportedLanguages(): string[] {
   const encodedLanguages = process.env.INTENTUMDIFF_SUPPORTED_LANGUAGES;
   if (encodedLanguages) {
     const languages = JSON.parse(encodedLanguages) as unknown;
@@ -560,41 +555,9 @@ function readSupportedLanguages(repoRoot: string): string[] {
     assert.ok(languages.length > 0, "runtime supported language list should not be empty");
     return languages;
   }
-  const pyproject = fs.readFileSync(path.join(repoRoot, "pyproject.toml"), "utf8");
-  const section = pyproject.match(/\[project\.entry-points\."intentumdiff\.parsers"\]\r?\n(?<body>[\s\S]*?)(?:\r?\n\[|$)/u);
-  const languages = new Set(section?.groups?.body
-    .split(/\r?\n/u)
-    .map((line) => line.match(/^\s*([a-z0-9-]+)\s*=/iu)?.[1])
-    .filter((language): language is string => Boolean(language)) ?? []);
-  for (const alias of ["databricks", "wast"]) {
-    languages.add(alias);
-  }
-  assert.ok(languages.size > 0, "runtime supported language list should not be empty");
-  return [...languages].sort();
+  throw new Error("Integration runner must provide INTENTUMDIFF_SUPPORTED_LANGUAGES");
 }
 
-function buildLanguageSmokeFiles(languages: string[]): LanguageSmokeFile[] {
-  const kinds: LanguageSmokeFile["kind"][] = [
-    "addition",
-    "deletion",
-    "modification",
-    "style",
-    "guardrail",
-    "parse",
-    "refactoring",
-  ];
-  return languages.map((language, index) => {
-    const kind = kinds[index % kinds.length];
-    const slug = language.replace(/[^a-z0-9_-]/giu, "_");
-    return {
-      language,
-      kind,
-      path: kind === "addition"
-        ? `language-smoke-added/${slug}.txt`
-        : `language-smoke/${slug}.txt`,
-    };
-  });
-}
 
 async function runLanguageSmokeScenario(
   fixture: string,
@@ -623,10 +586,10 @@ async function runLanguageSmokeScenario(
 
   const state = await reviewState();
   const smokeEntries = state.files.filter((entry) => entry.relativePath.startsWith("language-smoke"));
-  assert.equal(smokeEntries.length, files.length, "Semantic Changes should include one smoke file per language");
+  assert.equal(smokeEntries.length, files.length, "Semantic Changes should include one smoke file per scenario");
   assert.deepEqual(
     [...new Set(smokeEntries.map((entry) => entry.language).filter(Boolean))].sort(),
-    files.map((file) => file.language).sort(),
+    [...new Set(files.map((file) => file.language))].sort(),
     "Semantic Changes should preserve every language id from the smoke review",
   );
   assert.ok(smokeEntries.some((entry) => entry.changeTypes.includes("ADDITION")), "smoke review should include additions");

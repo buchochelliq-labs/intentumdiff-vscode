@@ -1,4 +1,4 @@
-**/node_modules/**
+node_modules/
 !node_modules/@vscode/codicons/dist/codicon.css
 !node_modules/@vscode/codicons/dist/codicon.ttf
 src/
@@ -36,3 +36,16 @@ resources/*.svg
 !resources/review-icon-light.svg
 tsconfig.json
 package-lock.json
+.candidate*/
+candidate-wheel.sha256
+
+# Development and audit inputs are not part of the installed extension.
+.github/
+.claude/
+AGENTS.md
+.nvmrc
+.gitignore
+scripts/
+review-shell/
+docs/
+release-media/manifest.json

@@ -91,17 +91,32 @@ def validate_manifest(
     *,
     require_all_surfaces: bool = True,
     require_approved_required_surfaces: bool = True,
+    expected_version: str | None = None,
+    expected_commit: str | None = None,
+    historical_inventory: bool = False,
 ) -> int:
     manifest = read_manifest(manifest_path)
     screenshots = manifest.get("screenshots")
     if not isinstance(screenshots, list) or not screenshots:
         raise AssertionError(f"Visual proof manifest has no screenshots: {manifest_path}")
 
+    if not historical_inventory and not expected_commit:
+        raise AssertionError("Provide --expected-commit for the candidate; use --historical-inventory only for inventory")
+    if not historical_inventory and expected_version is None:
+        expected_version = json.loads((Path(__file__).resolve().parents[1] / "package.json").read_text())["version"]
     seen: set[str] = set()
     for entry in screenshots:
         if not isinstance(entry, dict):
             raise TypeError("Visual proof manifest entries must be objects.")
 
+        if not historical_inventory:
+            if entry.get("extension_version") != expected_version:
+                raise AssertionError("Visual proof extension_version is missing or stale")
+            commit = entry.get("commit", "")
+            if not isinstance(commit, str) or len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+                raise AssertionError("Visual proof commit is missing or invalid")
+            if expected_commit is not None and commit != expected_commit:
+                raise AssertionError("Visual proof commit is stale")
         surface = entry.get("surface")
         if not surface:
             raise AssertionError("Visual proof manifest contains an entry without a surface.")
@@ -199,6 +214,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow required surfaces to remain needs_polish/post_beta; only for pre-RC review.",
     )
+    parser.add_argument("--expected-version")
+    parser.add_argument("--expected-commit")
+    parser.add_argument("--historical-inventory", action="store_true", help="Inventory unversioned historical captures; never release approval.")
     return parser
 
 
@@ -208,10 +226,12 @@ def main(argv: list[str] | None = None) -> int:
     manifest_path = Path(args.manifest)
     surface_count = validate_manifest(
         manifest_path,
+        expected_version=args.expected_version, expected_commit=args.expected_commit,
+        historical_inventory=args.historical_inventory,
         require_all_surfaces=not args.allow_partial,
         require_approved_required_surfaces=not args.allow_unapproved_required,
     )
-    print("Visual proof manifest is valid:")
+    print("Historical inventory only (not release approval):" if args.historical_inventory else "Visual proof manifest is valid:")
     print(f"  {manifest_path}")
     print(f"  surfaces: {surface_count}")
     return 0

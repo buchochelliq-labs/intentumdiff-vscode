@@ -75,6 +75,28 @@ test("buildIntentLenses is side-aware (deletions on base only)", () => {
   assert.equal(baseLenses[0].line, 5);
 });
 
+test("modifications expose both anchors for native before-after Peek", () => {
+  const modified = {
+    ...change("MODIFICATION", 9, "Update value"),
+    old_node: { position: { start_line: 4, start_col: 0, end_line: 4, end_col: 1 } },
+  };
+  for (const grouped of [true, false]) {
+    const diff: SemanticDiff = {
+      changes: [modified],
+      change_groups: grouped ? [{ kind: "MEANINGFUL_CHANGE", raw_change_indices: [0] }] : [],
+    };
+    const before = buildIntentLenses(diff, "base");
+    const after = buildIntentLenses(diff, "modified");
+    assert.equal(before.length, 1);
+    assert.equal(after.length, 1);
+    assert.equal(before[0].line, 4);
+    assert.equal(after[0].line, 9);
+    assert.equal(before[0].groupIndex, after[0].groupIndex);
+    assert.equal(intentForLine(diff, "base", 4)?.groupIndex, before[0].groupIndex);
+    assert.equal(intentForLine(diff, "modified", 9)?.groupIndex, after[0].groupIndex);
+  }
+});
+
 test("groupWhy prefers refactoring kind, then description, then labels", () => {
   assert.equal(
     groupWhy({ kind: "REFACTORING", refactoring_kind: "EXTRACT_FUNCTION" }, []),

@@ -317,7 +317,7 @@ function themeIconId(iconPath: vscodeTypes.TreeItem["iconPath"]): string | undef
 
 function themeIconColorId(iconPath: vscodeTypes.TreeItem["iconPath"]): string | undefined {
   return iconPath instanceof vscode.ThemeIcon
-    ? (iconPath.color as { id?: string } | undefined)?.id
+    ? iconPath.color?.id
     : undefined;
 }
 

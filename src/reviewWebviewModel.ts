@@ -156,6 +156,8 @@ export interface ReviewDashboardFile {
 }
 
 export interface ReviewFuelDiagnosticsSummary {
+  measuredCalls: number;
+  measuredTotals: number;
   callCount: number;
   hotspotCount: number;
   peakFuel: number;
@@ -225,6 +227,12 @@ export interface ReviewPanelModel {
   /** Optional AI-drafted release narrative (BYOK/Copilot). Filled asynchronously. */
   releaseNarrative?: string;
   assetDiff?: ReviewAssetDiff;
+  /**
+   * The changed image itself, on disk. NOT an engine artifact — it is shown only when the
+   * engine has no comparison to offer (an added or deleted image), so the reader still sees
+   * the file under review. Everything in `assetDiff` comes from the engine.
+   */
+  workingTreeImage?: string;
   semanticBaseText?: string;
   semanticModifiedText?: string;
   semanticGaps?: SemanticGap[];
@@ -242,6 +250,8 @@ export interface ReviewPanelModel {
 export interface ReviewAssetDiff {
   status?: string;
   summary?: string;
+  /** Why there is no comparison, when the engine reported `skipped`/`unavailable`. */
+  reason?: string;
   changed_pixel_percentage?: number | null;
   mean_absolute_error?: number | null;
   root_mean_squared_error?: number | null;
@@ -438,6 +448,9 @@ export function buildReviewPanelModel(
     diffRows,
     ref,
     assetDiff: assetDiffFromMetadata(file.diff?.metadata),
+    workingTreeImage: typeof file.diff?.metadata?.working_tree_image === "string"
+      ? file.diff.metadata.working_tree_image
+      : undefined,
     semanticBaseText: semanticPair?.baseText,
     semanticModifiedText: semanticPair?.modifiedText,
     semanticGaps: semanticPair?.gaps,
@@ -595,8 +608,22 @@ export function renderDashboardHtml(model: ReviewDashboardModel, options: Render
   return page("IntentumDiff Review", body, options);
 }
 
+function isSourceFallback(model: ReviewPanelModel): boolean {
+  return model.diff?.metadata?.semantic_contract === "rust_source_fallback_v1";
+}
+
 export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions): string {
+  if (model.file.status !== "ready") {
+    const pending = model.file.status === "pending";
+    return page(`IntentumDiff - ${model.file.relativePath}`, `<section class="review-state" role="status" aria-live="polite" aria-busy="${pending}">
+      <h1>${escapeHtml(model.file.relativePath)}</h1>
+      <h2>${pending ? "Analysing changes…" : "Review unavailable"}</h2>
+      <p>${pending ? "This view updates when analysis finishes." : escapeHtml(model.file.description)}</p>
+      ${pending ? "" : actionButton("Retry", "refresh")}
+    </section>`, options);
+  }
   const file = model.file;
+  const sourceFallback = isSourceFallback(model);
   const payload = file.payload;
   const stats = diffStats(model.diffRows);
   const isAsset = isImageLikePath(file.relativePath) || model.assetDiff !== undefined;
@@ -606,7 +633,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
         <div class="product-context" title="${escapeHtml(file.relativePath)}">
           <div class="product-file-line">
             <strong>${escapeHtml(file.relativePath)}</strong>
-            <span class="file-mode-badge">${isAsset ? "Perceptual diff" : "Semantic diff"}</span>
+            <span class="file-mode-badge">${isAsset ? "Perceptual diff" : sourceFallback ? "Source fallback" : "Semantic diff"}</span>
           </div>
           <span>${escapeHtml(file.description)}</span>
         </div>
@@ -617,6 +644,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${viewTab("Evidence", "evidence", "evidence")}
           ${viewTab("Diagnostics", "diagnostics", "detail")}
         </nav>
+      ${sourceFallback ? `<p class="fallback-notice" role="note">Source fallback · Semantic equivalence unknown. Review the source changes; intent could not be established.</p>` : ""}
       </header>
       <header class="diff-topbar" aria-label="Current file review controls">
         <nav class="top-badges" aria-label="Review filters and counts">
@@ -628,7 +656,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${statBadge("insert", stats.insert)}
           ${statBadge("delete", stats.delete)}
           ${statBadge("change", stats.change)}
-          ${statBadge("semantic", stats.semantic)}
+          ${sourceFallback ? "" : statBadge("semantic", stats.semantic)}
         </nav>
         <div class="hero-actions" aria-label="Native VS Code diff actions">
           ${payload ? actionButton("Native diff", "openNativeDiff", payload, "native") : ""}
@@ -676,6 +704,8 @@ function hljsLanguageId(model: ReviewPanelModel): string {
 }
 
 function renderTextDiffWorkbench(model: ReviewPanelModel): string {
+  const sourceFallback = isSourceFallback(model);
+  const kind = sourceFallback ? "Source" : "Semantic";
   const payload = model.file.payload;
   const counts = decorationCountsForDiff(model.diff);
   const totalChanges = counts.added + counts.removed + counts.changed + counts.refactored + counts.moved;
@@ -686,17 +716,17 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
           <span></span><span></span><span>Base &middot; ${escapeHtml(model.ref)}</span>
           <span></span><span></span><span>Working tree</span>
         </div>
-        <div class="diff-table" role="table" aria-label="Semantic diff rows">
-          ${diffRows(rows, payload)}
+        <div class="diff-table" role="table" aria-label="${kind} diff rows">
+          ${diffRows(rows, payload, sourceFallback)}
         </div>`
-    : `<div class="diff-empty">No semantic changes to display in this file.</div>`;
+    : `<div class="diff-empty">No ${sourceFallback ? "source" : "semantic"} changes to display in this file.</div>`;
   return `<div class="diff-workbench text-diff-workbench">
-    <section class="diff-surface text-diff-surface" aria-label="Semantic diff">
+    <section class="diff-surface text-diff-surface" aria-label="${kind} diff">
       <div class="diff-toolbar text-diff-toolbar">
         <div class="diff-toolbar-heading">
           <strong>${escapeHtml(model.ref)}</strong>
           <span> &rarr; working tree</span>
-          <span class="diff-toolbar-tag">${totalChanges} semantic change${totalChanges === 1 ? "" : "s"}</span>
+          <span class="diff-toolbar-tag">${totalChanges} ${sourceFallback ? "source" : "semantic"} change${totalChanges === 1 ? "" : "s"}</span>
         </div>
         <div class="diff-nav diff-cta-actions" aria-label="Diff actions">
           <button class="icon-action" type="button" data-panel-action="collapseAll" title="Collapse unchanged / non-semantic regions">Collapse all</button>
@@ -713,7 +743,9 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
 function renderAssetDiffWorkbench(model: ReviewPanelModel, options: RenderOptions): string {
   const assetDiff = model.assetDiff;
   const hasAssetDiff = assetDiff !== undefined && assetDiff.status === "compared";
-  const hasPreviewAsset = assetDiff !== undefined && assetDiff.status !== "compared";
+  // The engine answered, but with a reason rather than a comparison: an added or deleted image
+  // has no counterpart, dimensions can differ under a strict policy, and a request can fail.
+  const hasEngineVerdict = assetDiff !== undefined && assetDiff.status !== "compared";
   const artifacts = assetDiff?.artifacts ?? {};
   const hotspots = assetDiff?.hotspots ?? [];
   const histograms = assetDiff?.histograms;
@@ -771,25 +803,25 @@ function renderAssetDiffWorkbench(model: ReviewPanelModel, options: RenderOption
             ${assetArtifact("Overlay", artifacts.overlay, options)}
           </div>
         </details>
-      ` : hasPreviewAsset ? `
+      ` : hasEngineVerdict ? `
         <div class="asset-diff-summary asset-preview-summary">
           <div>
             <p class="eyebrow">Image asset review</p>
-            <h2>${escapeHtml(assetDiff?.summary ?? "Image asset changed")}</h2>
+            <h2>${escapeHtml(assetDiff?.summary ?? assetDiff?.reason ?? "No perceptual comparison for this image")}</h2>
           </div>
           <div class="asset-metric-strip" aria-label="Image asset status">
-            ${metricTile("Status", assetDiff?.status ?? "preview")}
+            ${metricTile("Status", assetDiff?.status ?? "unavailable")}
             ${metricTile("File", model.file.relativePath.split("/").pop() ?? model.file.relativePath)}
           </div>
         </div>
-        <div class="asset-review-grid asset-preview-grid" aria-label="Changed image preview">
+        <div class="asset-review-grid asset-preview-grid" aria-label="Changed image">
           <section class="asset-primary-visual">
-            ${assetArtifact("Working tree image", artifacts.changed ?? artifacts.after ?? artifacts.preview, options)}
+            ${assetArtifact("Working tree image", model.workingTreeImage, options)}
           </section>
           <aside class="asset-review-panel">
-            <h3>Perceptual diff pending</h3>
-            <p>This image is tracked by the review, but before/after perceptual artifacts have not been generated yet.</p>
-            <p class="boundary-note">Use the asset diff workflow to add overlay, heatmap, pixel mask, histogram, and hotspot evidence.</p>
+            <h3>${escapeHtml(assetStatusHeading(assetDiff?.status))}</h3>
+            <p>${escapeHtml(assetDiff?.reason ?? assetDiff?.summary ?? "The engine did not return a perceptual comparison for this image.")}</p>
+            <p class="boundary-note">Overlay, heatmap, mask, histogram and hotspot evidence needs both a before and an after image.</p>
           </aside>
         </div>
       ` : `
@@ -797,14 +829,25 @@ function renderAssetDiffWorkbench(model: ReviewPanelModel, options: RenderOption
           <div class="insight-mark">${iconSvg("image")}</div>
           <div>
             <p class="eyebrow">Perceptual asset diff</p>
-            <h2>${isImageLikePath(model.file.relativePath) ? "Perceptual image data unavailable" : "No visual asset selected"}</h2>
-            <p>${isImageLikePath(model.file.relativePath) ? "Run the asset diff command for this image to populate original, changed, overlay, heatmap, hotspot, and histogram data here." : "Open a changed PNG, JPG, JPEG, or WEBP asset to review perceptual diff output here."}</p>
+            <h2>${isImageLikePath(model.file.relativePath) ? "Comparing this image..." : "No visual asset selected"}</h2>
+            <p>${isImageLikePath(model.file.relativePath) ? "The engine is decoding both versions and rendering the overlay, heatmap, mask, hotspot and histogram evidence. This view updates when it answers." : "Open a changed PNG, JPG, JPEG, or WEBP asset to review perceptual diff output here."}</p>
             <p class="boundary-note">This view renders Rust JSON and generated artifacts only. No image-processing logic runs in the VS Code webview.</p>
           </div>
         </div>
       `}
     </section>
   </div>`;
+}
+
+/** Name the engine's non-comparison verdict for what it is, rather than implying more is coming. */
+function assetStatusHeading(status: string | undefined): string {
+  if (status === "skipped") {
+    return "Nothing to compare against";
+  }
+  if (status === "dimension_mismatch") {
+    return "Dimensions changed";
+  }
+  return "Perceptual comparison unavailable";
 }
 
 function dashboardFile(
@@ -1075,7 +1118,7 @@ function dashboardTopbar(model: ReviewDashboardModel): string {
       ${dashboardSummaryPill("Groups", groupCount, "groups")}
       ${dashboardSummaryPill("Guardrails", summary.guardrailCount, summary.immutableCount > 0 ? "danger" : "warn")}
       ${dashboardSummaryPill("Raw", summary.semanticChangeCount, "raw")}
-      ${dashboardSummaryPill("Fuel peak", formatFuel(fuelSummary.peakFuel), fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
+      ${dashboardSummaryPill("Fuel peak", fuelMetric(fuelSummary.peakFuel, fuelSummary.measuredCalls, fuelSummary.callCount), fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
       ${dashboardSummaryPill("Hotspots", fuelSummary.hotspotCount, fuelSummary.hotspotCount > 0 ? "danger" : "fuel")}
       ${dashboardCommandPill(`Grouping: ${groupingLabel}`, "cycleGrouping", "grouping")}
       ${model.languages.map((item) => dashboardFilterPill(`${item.language} ${item.count}`, `language:${item.language}`, "language")).join("")}
@@ -1151,6 +1194,10 @@ function dashboardFilters(model: ReviewDashboardModel): string {
   </div>`;
 }
 
+function fuelMetric(value: number, measured: number, calls: number): string {
+  return measured > 0 ? formatFuel(value) : calls > 0 ? "Unmetered" : "No fuel measurement";
+}
+
 function dashboardFuelPanel(model: ReviewDashboardModel): string {
   const fuelFiles = model.files
     .filter((file) => hasFuelOrParserSignal(file))
@@ -1171,8 +1218,8 @@ function dashboardFuelPanel(model: ReviewDashboardModel): string {
         <p>Sorted by hotspots, peak fuel, then total fuel across the latest review refresh.</p>
       </div>
       <div class="dashboard-fuel-kpis">
-        <span><strong>${escapeHtml(formatFuel(summary.peakFuel))}</strong><small>peak</small></span>
-        <span><strong>${escapeHtml(formatFuel(summary.totalFuel))}</strong><small>total</small></span>
+        <span><strong>${escapeHtml(fuelMetric(summary.peakFuel, summary.measuredCalls, summary.callCount))}</strong><small>peak</small></span>
+        <span><strong>${escapeHtml(fuelMetric(summary.totalFuel, summary.measuredTotals, summary.callCount))}</strong><small>total</small></span>
         <span><strong>${summary.hotspotCount}</strong><small>hotspots</small></span>
       </div>
     </header>
@@ -1191,12 +1238,12 @@ function dashboardFuelRow(file: ReviewDashboardFile): string {
     ...summary.policyReasons,
     summary.parseErrorCount > 0 ? `${summary.parseErrorCount} parse error${summary.parseErrorCount === 1 ? "" : "s"}` : "",
     summary.fallback ? "parser fallback" : "",
-  ].filter(Boolean).join(", ") || "within policy";
+  ].filter(Boolean).join(", ") || (summary.policyExceeded ? "Fuel hotspot reported" : summary.measuredCalls === 0 ? fuelMetric(0, 0, summary.callCount) : summary.measuredCalls < summary.callCount ? "within policy for measured calls; other calls unmetered" : "within policy");
   return `<article class="dashboard-fuel-row ${tone}" data-fuel-file="${escapeHtml(file.id)}">
     <strong>${escapeHtml(file.relativePath)}</strong>
     <span>${escapeHtml(file.language ?? "unknown")}</span>
-    <span>${escapeHtml(formatFuel(summary.peakFuel))} peak</span>
-    <span>${escapeHtml(formatFuel(summary.totalFuel))} total</span>
+    <span>${escapeHtml(fuelMetric(summary.peakFuel, summary.measuredCalls, summary.callCount))} peak</span>
+    <span>${escapeHtml(fuelMetric(summary.totalFuel, summary.measuredTotals, summary.callCount))} total</span>
     <span title="${escapeHtml(reasons)}">${summary.hotspotCount} hotspots</span>
     ${sparkline}
   </article>`;
@@ -1218,6 +1265,8 @@ function fuelDiagnosticsSummary(
   const diagnostics = diagnosticsForDiff(diff, fuelPolicy);
   const policyReasons = uniqueStrings(diagnostics.calls.flatMap((call) => call.policyReasons));
   return {
+    measuredCalls: diagnostics.calls.filter(call => call.fuelConsumed !== undefined).length,
+    measuredTotals: diagnostics.calls.filter(call => (call.totalFuelConsumed ?? call.fuelConsumed) !== undefined).length,
     callCount: diagnostics.calls.length,
     hotspotCount: diagnostics.hotspots.length,
     peakFuel: diagnostics.calls.reduce((peak, call) => Math.max(peak, call.fuelConsumed ?? 0), 0),
@@ -1231,6 +1280,8 @@ function fuelDiagnosticsSummary(
 
 function aggregateFuelDiagnostics(files: ReviewDashboardFile[]): ReviewFuelDiagnosticsSummary {
   return files.reduce<ReviewFuelDiagnosticsSummary>((total, file) => ({
+    measuredCalls: total.measuredCalls + file.fuelDiagnostics.measuredCalls,
+    measuredTotals: total.measuredTotals + file.fuelDiagnostics.measuredTotals,
     callCount: total.callCount + file.fuelDiagnostics.callCount,
     hotspotCount: total.hotspotCount + file.fuelDiagnostics.hotspotCount,
     peakFuel: Math.max(total.peakFuel, file.fuelDiagnostics.peakFuel),
@@ -1240,6 +1291,8 @@ function aggregateFuelDiagnostics(files: ReviewDashboardFile[]): ReviewFuelDiagn
     policyExceeded: total.policyExceeded || file.fuelDiagnostics.policyExceeded,
     policyReasons: uniqueStrings([...total.policyReasons, ...file.fuelDiagnostics.policyReasons]),
   }), {
+    measuredCalls: 0,
+    measuredTotals: 0,
     callCount: 0,
     hotspotCount: 0,
     peakFuel: 0,
@@ -1817,10 +1870,11 @@ function diagnosticsPage(model: ReviewPanelModel): string {
   const diagnostics = diagnosticsForDiff(model.diff, DEFAULT_REVIEW_FUEL_POLICY);
   const peakFuel = diagnostics.calls.reduce((peak, call) => Math.max(peak, call.fuelConsumed ?? 0), 0);
   const totalFuel = diagnostics.calls.reduce((total, call) => total + (call.totalFuelConsumed ?? call.fuelConsumed ?? 0), 0);
-  const hasTelemetry = diagnostics.calls.length > 0 || diagnostics.hotspots.length > 0 || diagnostics.events.length > 0;
+  const measured = diagnostics.calls.filter(call => call.fuelConsumed !== undefined).length;
+  const measuredTotals = diagnostics.calls.filter(call => (call.totalFuelConsumed ?? call.fuelConsumed) !== undefined).length;
   const health = diagnostics.parseErrors.length > 0 || diagnostics.hotspots.length > 0 || diagnostics.fallback
     ? "Inspect"
-    : hasTelemetry ? "Normal" : "Not captured";
+    : measured > 0 ? (measured < diagnostics.calls.length ? "Partially measured" : "Normal") : diagnostics.calls.length > 0 ? "Unmetered" : "Not captured";
   return `<section class="review-page insight-page" data-review-page="diagnostics" aria-label="Diagnostics view">
       <div class="insight-layout diagnostics-product-page">
         <article class="insight-hero diagnostics-hero product-hero">
@@ -1835,8 +1889,8 @@ function diagnosticsPage(model: ReviewPanelModel): string {
         <section class="insight-card metric-strip diagnostics-metrics" aria-label="Fuel metrics">
           ${metricTile("Calls", diagnostics.calls.length)}
           ${metricTile("Hotspots", diagnostics.hotspots.length)}
-          ${metricTile("Peak fuel", formatFuel(peakFuel))}
-          ${metricTile("Total fuel", formatFuel(totalFuel))}
+          ${metricTile("Peak fuel", fuelMetric(peakFuel, measured, diagnostics.calls.length))}
+          ${metricTile("Total fuel", fuelMetric(totalFuel, measuredTotals, diagnostics.calls.length))}
         </section>
         <section class="insight-card fuel-timeline-card">
           <h3>Fuel timeline</h3>
@@ -1852,7 +1906,7 @@ function diagnosticsPage(model: ReviewPanelModel): string {
           <h3>Hotspots</h3>
           ${diagnostics.hotspots.length > 0
             ? `<div class="diagnostics-list">${diagnostics.hotspots.map(hotspotCard).join("")}</div>`
-            : `<p>No excessive-fuel hotspot crossed policy thresholds for this file.</p>`}
+            : `<p>${measured > 0 ? "No excessive-fuel hotspot reported for measured calls." : "No fuel measurement available to assess hotspot thresholds."}</p>`}
         </section>
       </div>
     </section>`;
@@ -1935,11 +1989,11 @@ function diagnosticTraceEvents(diff: SemanticDiff | undefined): DiagnosticTraceE
 }
 
 function fuelTimelineRow(call: FuelTelemetryCall, index: number, peakFuel: number): string {
-  const consumed = call.fuelConsumed ?? 0;
+  const consumed = call.fuelConsumed;
   const percent = call.fuelUsedPercent ?? (
-    call.fuelBudget && call.fuelBudget > 0 ? consumed / call.fuelBudget * 100 : undefined
+    consumed !== undefined && call.fuelBudget && call.fuelBudget > 0 ? consumed / call.fuelBudget * 100 : undefined
   );
-  const width = Math.max(4, Math.min(100, percent ?? (peakFuel > 0 ? consumed / peakFuel * 100 : 4)));
+  const width = Math.max(4, Math.min(100, percent ?? (peakFuel > 0 && consumed !== undefined ? consumed / peakFuel * 100 : 4)));
   const classes = [
     "fuel-row",
     call.status.includes("exhaust") || call.policyReasons.length > 0 ? "is-hot" : "",
@@ -1951,15 +2005,15 @@ function fuelTimelineRow(call: FuelTelemetryCall, index: number, peakFuel: numbe
     call.fuelPerLine !== undefined ? `${formatFuel(call.fuelPerLine)}/line` : "",
     call.fuelPerKb !== undefined ? `${formatFuel(call.fuelPerKb)}/KB` : "",
   ].filter(Boolean).join(" · ");
-  const policy = call.policyReasons.length > 0 ? call.policyReasons.join(", ") : "within policy";
+  const policy = call.policyReasons.length > 0 ? call.policyReasons.join(", ") : consumed === undefined ? "Unmetered" : "within policy";
   return `<article class="${classes}">
     <header>
       <strong>${escapeHtml(`${index + 1}. ${call.language} ${call.func}${filename}`)}</strong>
       <span>${escapeHtml(call.status)}</span>
     </header>
-    <div class="fuel-bar" style="--bar-width:${width.toFixed(1)}%"><i></i></div>
+    ${consumed === undefined ? "" : `<div class="fuel-bar" style="--bar-width:${width.toFixed(1)}%"><i></i></div>`}
     <footer>
-      <span>${escapeHtml(formatFuel(consumed))} fuel${call.callCount > 1 ? ` over ${call.callCount} calls` : ""}</span>
+      <span>${consumed === undefined ? "Unmetered" : `${escapeHtml(formatFuel(consumed))} fuel`}${call.callCount > 1 ? ` over ${call.callCount} calls` : ""}</span>
       <span>${percent !== undefined ? escapeHtml(`${percent.toFixed(percent < 10 ? 2 : 1)}% budget`) : "budget n/a"}</span>
       ${call.elapsedMs !== undefined ? `<span>${escapeHtml(formatMetric(call.elapsedMs))} ms</span>` : ""}
       <span>${escapeHtml(policy)}</span>
@@ -2054,8 +2108,7 @@ function metricTile(label: string, value: string | number): string {
 }
 
 function changeBar(label: string, value: number, kind: "insert" | "delete" | "change" | "semantic"): string {
-  const width = Math.max(4, Math.min(100, value * 12));
-  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong><i style="--bar-width:${width}%"></i></div>`;
+  return `<div class="change-bar change-bar-${kind}"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
 }
 
 function releaseNoteItems(lines: string[], emptyLabel: string): string {
