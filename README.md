@@ -57,8 +57,8 @@ never in `settings.json`.
 
 ## Requirements
 
-- **The Python runtime:** `pip install intentumdiff-python` (0.0.2). This is the default
-  on every platform in 0.0.2.
+- **The Python runtime:** `pip install --pre intentumdiff-python` (0.0.2b2, a
+  pre-release, so `--pre` is needed). This is the default on every platform in 0.0.2.
 - *Optional:* the native Rust runtime (`intentumdiff-live-server`). 0.0.2 has no
   published native release; a verified Linux x64 CI candidate can be installed for
   testing with the [native installation steps](docs/BUILDING.md#native-runtime-candidate).
@@ -69,7 +69,7 @@ never in `settings.json`.
 
 | Platform | Default (`intentumdiff.liveServer.engine: auto`) |
 |---|---|
-| All platforms | Python runtime: `pip install intentumdiff-python` |
+| All platforms | Python runtime: `pip install --pre intentumdiff-python` |
 
 To use the native Rust runtime instead, set `intentumdiff.liveServer.engine` to
 `native` and put `intentumdiff-live-server` on your `PATH` (or set
@@ -82,9 +82,10 @@ Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-star
 
 ## Install
 
-1. Install the verified external Rust runtime and its matching components as above.
+1. Install the Python runtime: `pip install --pre intentumdiff-python`.
 2. Install **IntentumDiff** from the VS Code Marketplace or Open VSX, extension ID
-   `buchochelliq-labs.intentumdiff`
+   `buchochelliq-labs.intentumdiff`. 0.0.2 is on the **pre-release channel**: on the
+   extension page, choose "Switch to Pre-Release Version".
 
 Both steps are needed: the extension is a front end and the engine does the work.
 

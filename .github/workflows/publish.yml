@@ -174,6 +174,9 @@ jobs:
           printf '%s  %s\n' "$REVIEWED_VSIX_SHA256" "$vsix" | sha256sum --check -
           entry=$(node -p "require('./package.json').main.replace(/^[.][/]/, '')")
           unzip -Z1 "$vsix" | grep -Fxq "extension/$entry" || { echo "::error::reviewed VSIX lacks compiled entry" >&2; exit 1; }
+          # 0.0.2 ships on the pre-release channel: the reviewed bytes must say so.
+          unzip -p "$vsix" extension.vsixmanifest | grep -q 'Id="Microsoft.VisualStudio.Code.PreRelease" Value="true"' \
+            || { echo "::error::reviewed VSIX is not packaged as a pre-release" >&2; exit 1; }
           python3 - "$vsix" <<'PY'
           import sys, zipfile
           forbidden = ("extension/.github/", "extension/.claude/", "extension/scripts/",
@@ -281,7 +284,7 @@ jobs:
             echo "::error::VSCE_PAT is not set - add it to the 'marketplace' environment" >&2
             exit 1
           fi
-          npx vsce publish --packagePath ./*.vsix
+          npx vsce publish --pre-release --packagePath ./*.vsix
 
       - name: Publish to Open VSX
         env:
@@ -312,4 +315,4 @@ jobs:
             exit 1
           fi
 
-          npx ovsx publish ./*.vsix --pat "$OVSX_PAT"
+          npx ovsx publish ./*.vsix --pre-release --pat "$OVSX_PAT"

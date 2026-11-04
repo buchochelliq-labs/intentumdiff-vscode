@@ -34,3 +34,11 @@ test("publish uses independently reviewed release-media bytes, not historical sc
   assert.match(publishYml, /--expected-commit "\$REVIEWED_SOURCE_SHA"/);
   assert.doesNotMatch(publishYml, /validate_release_media_manifest\.py release-media\/manifest\.json/);
 });
+
+test("0.0.2 is packaged and published on the pre-release channel", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> };
+  assert.match(pkg.scripts.vsix, /vsce package --pre-release\b/);
+  assert.match(publishYml, /vsce publish --pre-release --packagePath/);
+  assert.match(publishYml, /ovsx publish \S+ --pre-release/);
+  assert.match(publishYml, /Microsoft\.VisualStudio\.Code\.PreRelease" Value="true"/);
+});

@@ -1,13 +1,18 @@
 # Changelog
 
-## 0.0.2 — release candidate (not published)
+## 0.0.2 — pre-release (not published)
+
+Published on the Marketplace and Open VSX **pre-release channel**: install it with
+"Switch to Pre-Release Version" on the extension page. It stays a pre-release until it has
+been used in anger; the next stable release will be a later version, as the Marketplace
+does not let a pre-release version be re-published as stable.
 
 ### Which engine runs your reviews
 
 - **The Python runtime is the default on every platform** (`intentumdiff.liveServer.engine:
-  auto`). Install it with `pip install intentumdiff-python`. A native Rust runtime
-  (`intentumdiff-live-server`) exists, but 0.0.2 publishes no native release, so `auto` does
-  not select it. To use a native build anyway, set `intentumdiff.liveServer.engine` to
+  auto`). Install it with `pip install --pre intentumdiff-python` (0.0.2b2 is a pre-release).
+  A native Rust runtime (`intentumdiff-live-server`) exists, but 0.0.2 publishes no native
+  release, so `auto` does not select it. To use a native build anyway, set `intentumdiff.liveServer.engine` to
   `native`. Published native releases are planned for 0.0.3.
 - With `auto` or `python`, a runtime installed in the workspace's `.venv` is found without
   adding it to `PATH`.
