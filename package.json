@@ -949,7 +949,7 @@
     "dev:host": "powershell -ExecutionPolicy Bypass -File ../../scripts/sync-local-dev.ps1 -OpenDevHost"
   },
   "devDependencies": {
-    "@highlightjs/cdn-assets": "^11.11.1",
+    "@highlightjs/cdn-assets": "^11.12.0",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^20.12.12",
     "@types/vscode": "^1.90.0",
