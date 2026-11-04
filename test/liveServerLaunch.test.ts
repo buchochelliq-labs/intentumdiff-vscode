@@ -110,6 +110,8 @@ test("ENOENT on the default python CLI keeps the workspace .venv suggestion", ()
     candidate,
   );
   assert.match(details.message, /Install IntentumDiff into the workspace \.venv/);
+  // 0.0.2's runtime is a pre-release; plain `pip install` would pick the older 0.0.1.
+  assert.match(details.message, /pip install --pre intentumdiff-python/);
   assert.equal(details.suggestedExecutable, candidate);
 });
 

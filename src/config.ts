@@ -143,6 +143,10 @@ export interface LiveServerFailureDetails {
  *  three distinct fixes: a missing USER override points at the setting (and the bundled
  *  engine when we ship one — never at the .venv, which would be a downgrade); a missing
  *  bundle means a broken install; a missing python CLI means the workspace .venv. */
+/** 0.0.2 ships the Python runtime as a pre-release (0.0.2b2): plain `pip install` would
+ *  pick the older stable 0.0.1, so the advice names `--pre`. */
+export const PYTHON_INSTALL_COMMAND = "pip install --pre intentumdiff-python";
+
 export function enoentFailureDetails(
   executable: string,
   launch: LiveServerLaunchContext,
@@ -172,8 +176,8 @@ export function enoentFailureDetails(
     };
   }
   const install = venvCandidate !== undefined
-    ? `Install IntentumDiff into the workspace .venv (expected at ${venvCandidate}), or set 'intentumdiff.executable' to an absolute path.`
-    : "Install IntentumDiff, then set 'intentumdiff.executable' to an absolute path.";
+    ? `Install IntentumDiff into the workspace .venv with '${PYTHON_INSTALL_COMMAND}' (expected at ${venvCandidate}), or set 'intentumdiff.executable' to an absolute path.`
+    : `Install IntentumDiff with '${PYTHON_INSTALL_COMMAND}', then set 'intentumdiff.executable' to an absolute path.`;
   return {
     message: `Could not find '${executable}' on VS Code's PATH. ${install} ${restart}`,
     toast: "IntentumDiff was not found — install it or set 'intentumdiff.executable'.",

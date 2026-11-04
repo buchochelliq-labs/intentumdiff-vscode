@@ -14,6 +14,14 @@ test("publish promotes the reviewed VSIX instead of rebuilding it (#101)", () =>
   assert.match(publishYml, /sha256/i, "publish.yml must verify the promoted VSIX's sha256");
 });
 
+test("0.0.2 defers the release-media gate, recording it, and still verifies supplied media (#103)", () => {
+  // No workflow captures rc-release-media yet. Omitting it must be visible, not silent,
+  // and supplying it must still run the full verification below.
+  assert.match(publishYml, /name: Record that release media was not supplied[^\n]*\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID == ''/);
+  assert.match(publishYml, /GITHUB_STEP_SUMMARY/);
+  assert.match(publishYml, /name: Download and verify separately reviewed release media\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID != ''/);
+});
+
 test("publish uses independently reviewed release-media bytes, not historical screenshots (#103)", () => {
   // A committed manifest cannot truthfully contain its own final source commit SHA.
   // A separately retained artifact must be bound to the approved acceptance run,
@@ -25,4 +33,24 @@ test("publish uses independently reviewed release-media bytes, not historical sc
   assert.match(publishYml, /validate_release_media_manifest\.py "[^"]*reviewed-media\/manifest\.json"/);
   assert.match(publishYml, /--expected-commit "\$REVIEWED_SOURCE_SHA"/);
   assert.doesNotMatch(publishYml, /validate_release_media_manifest\.py release-media\/manifest\.json/);
+});
+
+test("0.0.2 is packaged and published on the pre-release channel", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> };
+  assert.match(pkg.scripts.vsix, /vsce package --pre-release\b/);
+  assert.match(publishYml, /vsce publish --pre-release (--skip-duplicate )?--packagePath/);
+  assert.match(publishYml, /ovsx publish \S+ --pre-release/);
+  assert.match(publishYml, /Microsoft\.VisualStudio\.Code\.PreRelease" Value="true"/);
+});
+
+test("Open VSX is a required registry, checked before any upload and verified after", () => {
+  // Both tokens are required up front, so a missing one cannot leave a one-registry release.
+  const preflight = publishYml.indexOf("name: Require Marketplace and Open VSX tokens");
+  const marketplace = publishYml.indexOf("name: Publish to the VS Code Marketplace");
+  assert.ok(preflight > 0 && preflight < marketplace, "token check must precede the first upload");
+  assert.doesNotMatch(publishYml, /OVSX_PAT is not set - skipping Open VSX/);
+  assert.match(publishYml, /vsce publish --pre-release --skip-duplicate/);
+  assert.match(publishYml, /ovsx publish \S+ --pre-release --skip-duplicate/);
+  assert.match(publishYml, /open-vsx\.org\/api\/\$namespace\/\$name\/\$version/);
+  assert.match(publishYml, /preRelease/);
 });

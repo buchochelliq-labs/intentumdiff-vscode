@@ -14,7 +14,12 @@ async function evaluateTarget(url: string, expression: string): Promise<boolean>
   socket.addEventListener("message", event => {
     const reply = JSON.parse(String(event.data)) as Reply;
     if (reply.method === "Runtime.executionContextCreated" && reply.params?.context) contexts.add(reply.params.context.id);
-    if (reply.id !== undefined) { pending.get(reply.id)?.(reply); pending.delete(reply.id); }
+    // Only call a handler this socket registered: a numeric id we issued, and a function.
+    if (typeof reply.id === "number") {
+      const handler = pending.get(reply.id);
+      pending.delete(reply.id);
+      if (typeof handler === "function") handler(reply);
+    }
   });
   const send = (method: string, params: object = {}) => new Promise<Reply>((resolve, reject) => {
     const id = ++sequence;

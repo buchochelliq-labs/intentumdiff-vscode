@@ -941,7 +941,7 @@
     "test:unit": "node --test out/test/*.test.js",
     "test:integration": "npm run compile && node out/test/integration/runTests.js",
     "test:semanticdiff-comparison": "npm run compile && node out/test/comparison/runComparison.js",
-    "vsix": "npm run compile && vsce package --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/blob/HEAD --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/raw/HEAD",
+    "vsix": "npm run compile && vsce package --pre-release --baseContentUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/blob/HEAD --baseImagesUrl https://github.com/buchochelliq-labs/intentumdiff-vscode/raw/HEAD",
     "release:dry-run": "powershell -ExecutionPolicy Bypass -File ../../scripts/verify-vscode-extension-release.ps1",
     "install:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/install-vscode-extension.ps1",
     "sync:local": "powershell -ExecutionPolicy Bypass -File ../../scripts/sync-local-dev.ps1",
