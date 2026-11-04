@@ -15,6 +15,7 @@ import {
 import {
   readLiveServerEngine,
   readLiveServerRawExecutable,
+  resolveExecutableForFolder,
   settingsForFolder,
   workspaceVenvIntentumDiffCandidates,
 } from "./extensionSettings";
@@ -82,9 +83,11 @@ export class ServerSessionManager {
       userOverride: rawExecutable !== "intentumdiff",
       bundledPath: bundled,
     };
-    if (launch.kind === "native") {
-      settings.executable = launch.executable;
-    }
+    // Resolve by what is actually launched, not the literal setting: `auto` resolving to
+    // Python must find the workspace .venv exactly as an explicit `python` does.
+    settings.executable = launch.kind === "native"
+      ? launch.executable
+      : resolveExecutableForFolder(settings.executable, folder);
     const args = buildLiveServerArgs(folder.uri.fsPath, settings);
     this.host.trace(`spawn [engine=${launch.kind}] ${settings.executable} ${args.join(" ")}`);
     let transport: ProcessLineTransport;

@@ -37,14 +37,11 @@ export function readLiveServerSettings(): LiveServerSettings {
   };
 }
 
-export function settingsForFolder(folder: vscode.WorkspaceFolder): LiveServerSettings {
-  const settings = readLiveServerSettings();
-  return {
-    ...settings,
-    executable: readLiveServerEngine() === "python"
-      ? resolveExecutableForFolder(settings.executable, folder)
-      : settings.executable,
-  };
+/** The folder's settings. The executable is resolved later, once the launch kind is known:
+ *  a Python launch (explicit `python`, or `auto` where no native release exists) looks in the
+ *  workspace `.venv` first, via `resolveExecutableForFolder`. */
+export function settingsForFolder(_folder: vscode.WorkspaceFolder): LiveServerSettings {
+  return readLiveServerSettings();
 }
 
 export function resolveExecutableForFolder(executable: string, folder: vscode.WorkspaceFolder): string {

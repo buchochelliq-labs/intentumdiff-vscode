@@ -15,12 +15,13 @@ function load(name: string, overrides: Record<string, unknown> = {}, append = ""
   return exports;
 }
 
-function harness() {
+function harness(launch: unknown = { kind: "python" }) {
   const transports: any[] = [];
   const failures: unknown[] = [];
   class Transport {
-    constructor(...args: any[]) { transports.push(this); this.callbacks = args[3]; }
+    constructor(...args: any[]) { transports.push(this); this.executable = args[0]; this.callbacks = args[3]; }
     callbacks: any;
+    executable: string;
     dispose() { this.callbacks.onExit(null, "SIGTERM"); }
   }
   const { ServerSessionManager } = load("serverSessionManager", {
@@ -30,10 +31,11 @@ function harness() {
       settingsForFolder: () => ({ executable: "intentumdiff" }),
       readLiveServerRawExecutable: () => "intentumdiff",
       readLiveServerEngine: () => "auto",
+      resolveExecutableForFolder: (_executable: string, folder: any) => `${folder.uri.fsPath}/.venv/bin/intentumdiff`,
     },
     "./config": {
       bundledLiveServerPath: () => undefined,
-      chooseLiveServerLaunch: () => ({ kind: "python" }),
+      chooseLiveServerLaunch: () => launch,
       buildLiveServerArgs: () => [], buildLiveServerEnv: () => ({}),
     },
   });
@@ -108,4 +110,16 @@ test("engine failure clears only its folder requests and permits a manual retry"
   assert.ok(c.reviewRefreshTimer);
   clearTimeout(c.reviewRefreshTimer);
   assert.notEqual(c.reviewRefreshQueued, true);
+});
+
+test("an auto launch that resolves to Python finds the workspace .venv like explicit python", () => {
+  const h = harness({ kind: "python" });
+  h.manager.ensure(h.folder);
+  assert.equal(h.transports[0].executable, "/workspace/.venv/bin/intentumdiff");
+});
+
+test("a native launch keeps its executable and skips .venv discovery", () => {
+  const h = harness({ kind: "native", executable: "intentumdiff-live-server" });
+  h.manager.ensure(h.folder);
+  assert.equal(h.transports[0].executable, "intentumdiff-live-server");
 });
