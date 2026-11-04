@@ -76,7 +76,7 @@ jobs:
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: '22'
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       # Python 110e793 0.0.2b2 release-profile wheel (CI run 41790266216; Core 726fd07). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
