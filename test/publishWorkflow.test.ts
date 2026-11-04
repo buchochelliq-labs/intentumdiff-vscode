@@ -38,7 +38,19 @@ test("publish uses independently reviewed release-media bytes, not historical sc
 test("0.0.2 is packaged and published on the pre-release channel", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> };
   assert.match(pkg.scripts.vsix, /vsce package --pre-release\b/);
-  assert.match(publishYml, /vsce publish --pre-release --packagePath/);
+  assert.match(publishYml, /vsce publish --pre-release (--skip-duplicate )?--packagePath/);
   assert.match(publishYml, /ovsx publish \S+ --pre-release/);
   assert.match(publishYml, /Microsoft\.VisualStudio\.Code\.PreRelease" Value="true"/);
+});
+
+test("Open VSX is a required registry, checked before any upload and verified after", () => {
+  // Both tokens are required up front, so a missing one cannot leave a one-registry release.
+  const preflight = publishYml.indexOf("name: Require Marketplace and Open VSX tokens");
+  const marketplace = publishYml.indexOf("name: Publish to the VS Code Marketplace");
+  assert.ok(preflight > 0 && preflight < marketplace, "token check must precede the first upload");
+  assert.doesNotMatch(publishYml, /OVSX_PAT is not set - skipping Open VSX/);
+  assert.match(publishYml, /vsce publish --pre-release --skip-duplicate/);
+  assert.match(publishYml, /ovsx publish \S+ --pre-release --skip-duplicate/);
+  assert.match(publishYml, /open-vsx\.org\/api\/\$namespace\/\$name\/\$version/);
+  assert.match(publishYml, /preRelease/);
 });

@@ -276,25 +276,29 @@ jobs:
       - name: Re-verify the downloaded checksum
         run: sha256sum --check ./*.vsix.sha256
 
+      # Both registries are required. Check both tokens before uploading anything,
+      # so a missing token cannot leave a release on one registry only.
+      - name: Require Marketplace and Open VSX tokens
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          missing=0
+          [ -n "$VSCE_PAT" ] || { echo "::error::VSCE_PAT is not set - add it to the 'marketplace' environment" >&2; missing=1; }
+          [ -n "$OVSX_PAT" ] || { echo "::error::OVSX_PAT is not set - add it to the 'marketplace' environment" >&2; missing=1; }
+          exit "$missing"
+
+      # --skip-duplicate on both uploads: if one registry failed, re-running the job
+      # completes the missing one instead of failing on the one already published.
       - name: Publish to the VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo "::error::VSCE_PAT is not set - add it to the 'marketplace' environment" >&2
-            exit 1
-          fi
-          npx vsce publish --pre-release --packagePath ./*.vsix
+        run: npx vsce publish --pre-release --skip-duplicate --packagePath ./*.vsix
 
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          if [ -z "$OVSX_PAT" ]; then
-            echo "::warning::OVSX_PAT is not set - skipping Open VSX"
-            exit 0
-          fi
-
           # Open VSX requires the namespace to exist before anything can be published
           # into it, and it must equal package.json's `publisher` -- ovsx derives the
           # target from the VSIX itself, so a mismatch is not something a flag can fix.
@@ -315,4 +319,33 @@ jobs:
             exit 1
           fi
 
-          npx ovsx publish ./*.vsix --pre-release --pat "$OVSX_PAT"
+          npx ovsx publish ./*.vsix --pre-release --skip-duplicate --pat "$OVSX_PAT"
+
+      - name: Verify Open VSX serves this version as a pre-release
+        run: |
+          set -euo pipefail
+          namespace=$(node -p "require('./package.json').publisher")
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          url="https://open-vsx.org/api/$namespace/$name/$version"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$url" -o ovsx.json; then
+              python3 - ovsx.json "$version" <<'PYOVSX'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          if data.get("version") != sys.argv[2]:
+              raise SystemExit(f"Open VSX serves {data.get('version')!r}, expected {sys.argv[2]!r}")
+          flag = data.get("preRelease")
+          if flag is False:
+              raise SystemExit("Open VSX lists this version, but not as a pre-release")
+          if flag is None:
+              print("::warning::Open VSX did not report preRelease; check the listing by hand")
+          print(f"Open VSX serves {sys.argv[2]} (preRelease={flag})")
+          PYOVSX
+              exit 0
+            fi
+            echo "attempt $attempt: $url not served yet"
+            sleep 20
+          done
+          echo "::error::Open VSX did not serve $namespace.$name $version within 10 minutes" >&2
+          exit 1
