@@ -9,6 +9,7 @@ import {
   chooseLiveServerLaunch,
   enoentFailureDetails,
   normalizeLiveServerEngine,
+  VERIFIED_NATIVE_PLATFORMS,
 } from "../src/config";
 
 const BUNDLED = "C:/ext/native/intentumdiff-live-server.exe";
@@ -31,12 +32,13 @@ test("auto prefers the bundled native server when present", () => {
   });
 });
 
-test("auto without a bundle launches the external Rust server on a verified native platform", () => {
-  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, "linux-x64"), { kind: "native", executable: "intentumdiff-live-server" });
+test("auto without a bundle launches the external Rust server on a platform with a published native release", () => {
+  assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, "linux-x64", ["linux-x64"]), { kind: "native", executable: "intentumdiff-live-server" });
 });
 
-test("auto without a bundle uses the Python runtime where no verified native build exists (vscode#102)", () => {
-  for (const platform of ["darwin-arm64", "darwin-x64", "win32-x64", "win32-arm64", "linux-arm64"]) {
+test("0.0.2 publishes no native release, so auto uses Python on every platform (live-server#25)", () => {
+  assert.deepEqual(VERIFIED_NATIVE_PLATFORMS, []);
+  for (const platform of ["linux-x64", "darwin-arm64", "darwin-x64", "win32-x64", "win32-arm64", "linux-arm64"]) {
     assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, platform), { kind: "python" }, platform);
   }
   // A bundled binary, an explicit engine and an explicit executable still win everywhere.

@@ -85,10 +85,11 @@ export type LiveServerLaunch =
   | { kind: "native"; executable: string }
   | { kind: "python" };
 
-/** Platforms (`<process.platform>-<process.arch>`) with a released, verified native
- *  live-server build. 0.0.2 ships linux-x64 only (vscode#102, live-server#25); everywhere
- *  else `auto` uses the Python runtime rather than defaulting to a binary that does not exist. */
-export const VERIFIED_NATIVE_PLATFORMS: readonly string[] = ["linux-x64"];
+/** Platforms (`<process.platform>-<process.arch>`) with a *published*, verified native
+ *  live-server release. 0.0.2 publishes none (live-server#25: CI artifacts only), so `auto`
+ *  uses the Python runtime everywhere rather than defaulting to a binary users cannot get.
+ *  Add a platform here only once its release asset is published (0.0.3, vscode#21). */
+export const VERIFIED_NATIVE_PLATFORMS: readonly string[] = [];
 
 export function currentPlatformKey(): string {
   return `${process.platform}-${process.arch}`;
@@ -102,6 +103,7 @@ export function chooseLiveServerLaunch(
   engine: LiveServerEngine,
   bundledPath: string | undefined,
   platformKey: string = currentPlatformKey(),
+  verifiedPlatforms: readonly string[] = VERIFIED_NATIVE_PLATFORMS,
 ): LiveServerLaunch {
   if (rawExecutable !== "intentumdiff") {
     return engine === "python"
@@ -114,7 +116,7 @@ export function chooseLiveServerLaunch(
   if (bundledPath) {
     return { kind: "native", executable: bundledPath };
   }
-  if (engine === "auto" && !VERIFIED_NATIVE_PLATFORMS.includes(platformKey)) {
+  if (engine === "auto" && !verifiedPlatforms.includes(platformKey)) {
     return { kind: "python" };
   }
   return { kind: "native", executable: "intentumdiff-live-server" };
