@@ -30,7 +30,7 @@ on:
         description: "Reviewed source commit SHA"
         type: string
       candidate_media_artifact_id:
-        description: "Independently reviewed release-media artifact ID from the acceptance run"
+        description: "Independently reviewed release-media artifact ID from the acceptance run (optional for 0.0.2; required again in 0.0.3, #103)"
         type: string
       candidate_media_sha256:
         description: "SHA-256 of the approved release-media artifact ZIP"
@@ -110,7 +110,19 @@ jobs:
       # candidate SHA would change the reviewed source tree, invalidating the
       # earlier tree-equality check. Release media must instead be retained as
       # independently reviewed, immutable bytes from that exact CI run.
+      #
+      # 0.0.2: no workflow captures rc-release-media yet (#103), so the gate is
+      # deferred to 0.0.3. Supplied media is still fully verified; omitted media
+      # is recorded in the run summary. 0.0.3: drop this `if:` to require it again.
+      - name: Record that release media was not supplied (deferred to 0.0.3, #103)
+        if: env.REVIEWED_MEDIA_ARTIFACT_ID == ''
+        shell: bash
+        run: |
+          echo "::notice::No reviewed release-media artifact supplied; the media gate is deferred to 0.0.3 (#103)."
+          echo "### Release media not verified (deferred to 0.0.3, #103)" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download and verify separately reviewed release media
+        if: env.REVIEWED_MEDIA_ARTIFACT_ID != ''
         shell: bash
         run: |
           set -euo pipefail

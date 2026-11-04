@@ -14,6 +14,14 @@ test("publish promotes the reviewed VSIX instead of rebuilding it (#101)", () =>
   assert.match(publishYml, /sha256/i, "publish.yml must verify the promoted VSIX's sha256");
 });
 
+test("0.0.2 defers the release-media gate, recording it, and still verifies supplied media (#103)", () => {
+  // No workflow captures rc-release-media yet. Omitting it must be visible, not silent,
+  // and supplying it must still run the full verification below.
+  assert.match(publishYml, /name: Record that release media was not supplied[^\n]*\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID == ''/);
+  assert.match(publishYml, /GITHUB_STEP_SUMMARY/);
+  assert.match(publishYml, /name: Download and verify separately reviewed release media\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID != ''/);
+});
+
 test("publish uses independently reviewed release-media bytes, not historical screenshots (#103)", () => {
   // A committed manifest cannot truthfully contain its own final source commit SHA.
   // A separately retained artifact must be bound to the approved acceptance run,
