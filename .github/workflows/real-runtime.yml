@@ -79,7 +79,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      # Python e155d48 0.0.2 release-profile wheel (CI run 41703728155; Core 161cdbc). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
+      # Python 09fb939 0.0.2 release-profile wheel (CI run 41750200742; Core 726fd07). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
       - name: Download and verify reviewed candidate wheel
         if: matrix.runtime == 'python'
         env:
@@ -87,7 +87,7 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_wheel.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/13268288166/zip > .candidate-download/wheel.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/13290975305/zip > .candidate-download/wheel.zip
           python scripts/verify_candidate_wheel.py .candidate-download/wheel.zip .candidate-wheels
       - name: Install external candidate wheel
         if: matrix.runtime == 'python'
@@ -103,7 +103,7 @@ jobs:
               for key in ('python_commit', 'core_commit', 'wheel_sha256', 'artifact_id'):
                   env.write(f"INTENTUMDIFF_TEST_{key.upper()}={identity[key]}\n")
           PY
-      # Native release head f125227 (live-server #27, Core 161cdbc): exact tested binary with the same immutable Python e155d48 wheel and parser components.
+      # Native release head 0956a64 (live-server #28, Core 726fd07): exact tested binary with the same immutable Python 09fb939 wheel and parser components.
       - name: Download and verify native candidate
         if: matrix.runtime == 'native'
         env:
@@ -115,7 +115,7 @@ jobs:
           python scripts/verify_candidate_native.py .candidate-download/native.zip .candidate-native \
             --expected-archive-sha256 b609dfdb031a981c89379bcad880c30686f1a2fcb5994cb29ea275082339e4d2 \
             --expected-server-commit f1252274fa6954af6a7ba4b50cf457022db4ae4a \
-            --expected-core-commit 161cdbcaaeb86ed6ae6559d68bcf9ac2b37212c8
+            --expected-core-commit 726fd07c77a83d2554d3eca68b6469e9461b87bc
           echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-native/intentumdiff-live-server" >> "$GITHUB_ENV"
           echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=13271438610" >> "$GITHUB_ENV"
           python - <<'PYTHON'
