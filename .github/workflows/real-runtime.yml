@@ -48,7 +48,7 @@ jobs:
           unzip -l "$vsix" | grep -F "extension/$entry"
           sha256sum "$vsix" > candidate-vsix.sha256
           sha256sum --check candidate-vsix.sha256
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rc-candidate-vsix
           path: |
@@ -157,7 +157,7 @@ jobs:
           xvfb-run -a -s '-screen 0 1440x1000x24' node out/test/integration/runRealTests.js
       - name: Retain actual evidence and logs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}
           include-hidden-files: true
