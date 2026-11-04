@@ -57,10 +57,11 @@ never in `settings.json`.
 
 ## Requirements
 
-- **The external Rust runtime:** `intentumdiff-live-server` and its matching verified
-  `wasm/` component directory. Python is not required by the default extension runtime.
-  For Linux x64 candidate testing, follow the [verified native installation steps](docs/BUILDING.md#native-runtime-candidate); keep the
-  executable and its adjacent `wasm/` directory together.
+- **The Python runtime:** `pip install intentumdiff-python` (0.0.2). This is the default
+  on every platform in 0.0.2.
+- *Optional:* the native Rust runtime (`intentumdiff-live-server`). 0.0.2 has no
+  published native release; a verified Linux x64 CI candidate can be installed for
+  testing with the [native installation steps](docs/BUILDING.md#native-runtime-candidate).
 - VS Code 1.90 or newer
 - A workspace folder backed by git
 
@@ -68,16 +69,14 @@ never in `settings.json`.
 
 | Platform | Default (`intentumdiff.liveServer.engine: auto`) |
 |---|---|
-| Linux x64 | Native Rust runtime (`intentumdiff-live-server`) |
-| macOS, Windows, Linux arm64 | Python runtime: `pip install intentumdiff-python` |
+| All platforms | Python runtime: `pip install intentumdiff-python` |
 
-On Linux x64, put `intentumdiff-live-server` on your `PATH`, or set
-`intentumdiff.executable` to its absolute path. When the native runtime is selected
+To use the native Rust runtime instead, set `intentumdiff.liveServer.engine` to
+`native` and put `intentumdiff-live-server` on your `PATH` (or set
+`intentumdiff.executable` to its absolute path). When the native runtime is selected
 and missing, that is an error; the extension does not silently switch to Python.
 
-Native builds for other platforms are planned for 0.0.3. To choose a runtime
-explicitly on any platform, set `intentumdiff.liveServer.engine` to `native` or
-`python`.
+Published native releases, and `auto` selecting them, are planned for 0.0.3.
 
 Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-started/**
 

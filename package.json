@@ -727,7 +727,7 @@
             "python"
           ],
           "default": "auto",
-          "description": "'auto' uses the Rust live-server on platforms with a verified native release (Linux x64 in 0.0.2) and the Python runtime (intentumdiff-python) elsewhere. 'native' always uses the Rust live-server. 'python' always uses the Python runtime. A bundled native server or an explicit intentumdiff.executable path wins."
+          "description": "'auto' uses the Rust live-server only on platforms with a published native release (none in 0.0.2) and the Python runtime (intentumdiff-python) everywhere else. 'native' always uses the Rust live-server. 'python' always uses the Python runtime. A bundled native server or an explicit intentumdiff.executable path wins."
         },
         "intentumdiff.review.maxAutoRetries": {
           "type": "number",
