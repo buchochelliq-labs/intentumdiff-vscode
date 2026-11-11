@@ -937,6 +937,7 @@
     "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "tsc -p ./ --noEmit",
+    "lint:min-engine": "node scripts/check-min-vscode-api.mjs",
     "test": "npm run compile && npm run test:unit",
     "test:unit": "node --test out/test/*.test.js",
     "test:integration": "npm run compile && node out/test/integration/runTests.js",
