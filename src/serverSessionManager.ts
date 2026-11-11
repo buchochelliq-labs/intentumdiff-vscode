@@ -87,7 +87,8 @@ export class ServerSessionManager {
     }
 
     const settings = settingsForFolder(folder);
-    // Rust is the default external runtime. Python is explicit opt-in only.
+    // Engine selection lives in chooseLiveServerLaunch (docs/ARCHITECTURE.md "Topology"):
+    // `auto` uses native only on a verified-release platform (none yet), else Python.
     const rawExecutable = readLiveServerRawExecutable();
     const engine = readLiveServerEngine();
     const bundled = bundledLiveServerPath(this.host.extensionPath);

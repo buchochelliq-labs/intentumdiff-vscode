@@ -2,15 +2,25 @@
 
 ## Topology
 
-The extension starts the external Rust `intentumdiff-live-server` by default.
-Rust owns semantic analysis, protocol handlers and asset processing; the extension
-renders the engine's results. Legacy Python transport requires explicit
-`intentumdiff.liveServer.engine = "python"` selection.
+The extension renders what an external engine process serves. Rust owns semantic
+analysis, protocol handlers and asset processing; the extension renders the engine's
+results. Which engine process starts is decided by `chooseLiveServerLaunch`
+(`src/config.ts`) and the `intentumdiff.liveServer.engine` setting (default `auto`):
 
-The VSIX contains the extension and review assets. It does not bundle Python,
-a native live-server binary, or parser components. Configure `intentumdiff.executable`
-when the external Rust server is not on PATH. Its verified parser components must
-remain next to it in `wasm/`. There is no automatic Python fallback.
+1. An explicit `intentumdiff.executable` path wins (as native, or as the Python CLI when the
+   engine is `python`).
+2. `python` always launches the Python runtime (`intentumdiff-python`, which hosts the Rust
+   core); `native` always launches the Rust `intentumdiff-live-server`.
+3. `auto` uses a bundled native server if the VSIX carries one (none does today), else the
+   native server only on a platform listed in `VERIFIED_NATIVE_PLATFORMS`. That list is
+   **empty** in this release, so `auto` selects the **Python runtime on every platform**.
+   Native bundling or per-platform defaults are not a committed decision; a platform is
+   added only once its native release asset is published.
+
+The VSIX contains the extension and review assets. It does not bundle Python, a native
+live-server binary, or parser components. A native server's verified parser components must
+remain next to it in `wasm/`. The selected engine is never silently swapped: if it fails to
+start, that is reported as an error (there is no automatic fallback to the other runtime).
 
 ## Surfaces (native-first)
 

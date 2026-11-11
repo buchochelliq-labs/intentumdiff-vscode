@@ -14,10 +14,10 @@ updates:
       - "dependencies"
       - "javascript"
     # jsdom >= 30 depends on undici 8, which calls worker_threads.markAsUncloneable -
-    # a builtin added in Node 22.10.0 and never backported to 20. CI runs Node 20
-    # because that is what the VS Code 1.90 extension host provides
-    # (engines.vscode ^1.90.0 -> Electron 29.4.0 -> Node 20.9.0), so jsdom 30 cannot
-    # run on the runtime this extension actually ships to.
+    # a builtin added in Node 22.10.0 and never backported to 20. CI builds and tests
+    # on Node 22 (.nvmrc, docs/BUILDING.md), but the runtime target is the VS Code 1.90
+    # extension host (engines.vscode ^1.90.0 -> Electron 29.4.0 -> Node 20.9.0), and
+    # the test suite is kept runnable on that runtime line, so jsdom 30 stays out.
     #
     # No VS Code release offers a middle ground: the newest Node 22 any of them bundles
     # is 22.22.1, one patch below jsdom 30's ^22.22.2 floor. Revisit when engines.vscode
