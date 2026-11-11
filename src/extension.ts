@@ -29,7 +29,7 @@ import {
   workspaceVenvIntentumDiffCandidates,
   type NativeDiffMode,
 } from "./extensionSettings";
-import { BASE_SCHEME, assertSafeRelativePath, decodeBaseIdentity } from "./baseUri";
+import { BASE_SCHEME, assertSafeRelativePath, baseRelativePathFor, decodeBaseIdentity } from "./baseUri";
 import {
   buildLiveServerArgs,
   buildLiveServerEnv,
@@ -2057,10 +2057,11 @@ class PysdController implements vscode.Disposable {
       filePayload.relativePath,
     );
     const ref = readLiveServerSettings().ref;
+    // Renamed/moved files: the base side is the OLD path, the modified side the new one.
     const baseUri = this.baseContentProvider.createUri({
       folderUri: filePayload.folderUri,
       ref,
-      relativePath: filePayload.relativePath,
+      relativePath: baseRelativePathFor(filePayload.relativePath, file.diff),
       cacheNonce: this.reviewSnapshots.get(filePayload.folderUri)?.resolvedCommit,
     });
     const contextLines = readReviewDiffContextLines();

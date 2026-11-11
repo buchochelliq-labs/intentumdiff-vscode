@@ -4,7 +4,7 @@
 // refresh. Review state, visuals, and editor-context flags stay host-side.
 import * as path from "path";
 import * as vscode from "vscode";
-import { assertSafeRelativePath } from "./baseUri";
+import { assertSafeRelativePath, baseRelativePathFor } from "./baseUri";
 import type { BaseContentProvider } from "./baseContentProvider";
 import type { EmptyContentProvider } from "./emptyContentProvider";
 import {
@@ -209,13 +209,18 @@ export class DiffSurfaceController {
       filePayload.relativePath,
     );
     const ref = readLiveServerSettings().ref;
+    // Renamed/moved files: the base side is the OLD path, the modified side the new one.
     const baseUri = this.host.baseContentProvider.createUri({
       folderUri: filePayload.folderUri,
       ref,
-      relativePath: filePayload.relativePath,
+      relativePath: baseRelativePathFor(filePayload.relativePath, file?.diff),
       cacheNonce: this.host.resolvedCommitFor(filePayload.folderUri),
     });
-    const title = `${filePayload.relativePath} (IntentumDiff: ${ref} ↔ working tree)`;
+    const basePath = baseRelativePathFor(filePayload.relativePath, file?.diff);
+    const label = basePath === filePayload.relativePath
+      ? filePayload.relativePath
+      : `${basePath} → ${filePayload.relativePath}`;
+    const title = `${label} (IntentumDiff: ${ref} ↔ working tree)`;
     const mode = modeOverride ?? readDiffMode();
     if (mode === "semanticOnly" && file?.diff) {
       await this.openSemanticOnlyNativeDiff(filePayload, file.diff, baseUri, modifiedUri, ref);
