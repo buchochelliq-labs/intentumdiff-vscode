@@ -1595,3 +1595,26 @@ test("evidence counts remain literal without CSP-blocked decorative bars", () =>
       "CSP rejects inline width attributes, turning even zero counts into full bars");
   }
 });
+
+test("gap decoration ownership follows the chunk that precedes the gap (#129)", () => {
+  const lines = Array.from({ length: 30 }, (_, index) => `line ${index}`).join("\n");
+  const at = (line: number) => ({ start_line: line, start_col: 0, end_line: line, end_col: 1 });
+  // Changes 0 and 1 merge into the first chunk (its last change is the
+  // addition); change 2 forms the second. Raw change indexes != chunk indexes.
+  const diff = {
+    language: "text",
+    changes: [
+      { change_type: "MODIFICATION", old_node: { label: "a", position: at(2) }, new_node: { label: "a", position: at(2) } },
+      { change_type: "ADDITION", new_node: { label: "b", position: at(3) } },
+      { change_type: "MODIFICATION", old_node: { label: "c", position: at(20) }, new_node: { label: "c", position: at(20) } },
+    ],
+    change_groups: [],
+  } as any;
+  const model = buildReviewPanelModel(
+    { folderName: "w", folderUri: "file:///w", relativePath: "a.txt", status: "ready", diff } as any,
+    lines,
+    lines,
+    "HEAD",
+  );
+  assert.deepEqual(model.semanticGaps?.map((gap) => gap.trailingKind), ["added"]);
+});

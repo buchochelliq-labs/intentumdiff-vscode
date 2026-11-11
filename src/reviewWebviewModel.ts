@@ -532,8 +532,7 @@ function attachSemanticDecorations(
     // When multiple changes are merged into one chunk, use the LAST change's
     // kind. The `changeIndexes` list on the projection is the ground truth
     // for which changes contributed to this projected position.
-    const chunkChangeIndexes = (proj as { changeIndexes?: number[] }).changeIndexes
-      ?? [proj.changeIndex];
+    const chunkChangeIndexes = proj.changeIndexes ?? [proj.changeIndex];
     const lastChangeIdx = chunkChangeIndexes[chunkChangeIndexes.length - 1];
     if (lastChangeIdx === undefined) { continue; }
     const change = changes[lastChangeIdx];

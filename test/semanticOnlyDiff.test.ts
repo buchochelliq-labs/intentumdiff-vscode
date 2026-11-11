@@ -268,3 +268,47 @@ test("semantic gap metadata has correct projected line numbers (1-based)", () =>
   assert.equal(result.gaps[0].base?.projectedLine, 2);
   assert.equal(result.gaps[0].modified?.projectedLine, 2);
 });
+
+// #129: window ends in the original->projected space, keyed by raw change index.
+const at = (line: number, endLine = line) => ({ start_line: line, start_col: 0, end_line: endLine, end_col: 1 });
+const tenLines = Array.from({ length: 10 }, (_, index) => `line ${index}`).join("\n");
+const zeroContext: SemanticOnlyOptions = { ...defaultOptions, contextLines: 0 };
+
+test("disjoint changes get projected window ends [1, 3], not original-line lookups (#129)", () => {
+  const diff: SemanticDiff = {
+    changes: [
+      { change_type: "MODIFICATION", old_node: { label: "a", position: at(2) }, new_node: { label: "a", position: at(2) } },
+      { change_type: "MODIFICATION", old_node: { label: "b", position: at(8) }, new_node: { label: "b", position: at(8) } },
+    ],
+  };
+  const pair = buildSemanticOnlyDocuments(tenLines, tenLines, diff, zeroContext);
+  assert.deepEqual(pair.projection.changes.map((change) => change.modifiedWindowEnd), [1, 3]);
+  assert.deepEqual(pair.projection.changes.map((change) => change.baseWindowEnd), [1, 3]);
+  // The gap after chunk 1 sits right after its window end.
+  assert.equal(pair.gaps[0].modified?.projectedLine, 2);
+});
+
+test("merged, filtered and reordered changes map window ends by raw change index (#129)", () => {
+  const diff: SemanticDiff = {
+    changes: [
+      // 0: filtered out (comment) — owns no chunk.
+      { change_type: "MODIFICATION", old_node: { node_type: "comment", label: "c", position: at(0) }, new_node: { node_type: "comment", label: "c", position: at(0) } },
+      // 1 and 2: adjacent -> merged into one chunk.
+      { change_type: "MODIFICATION", old_node: { label: "x", position: at(3) }, new_node: { label: "x", position: at(3) } },
+      { change_type: "ADDITION", new_node: { label: "y", position: at(4) } },
+      // 3: separate chunk, earlier in the file than its index suggests is fine too.
+      { change_type: "DELETION", old_node: { label: "z", position: at(8) } },
+    ],
+  };
+  const pair = buildSemanticOnlyDocuments(tenLines, tenLines, diff, { ...zeroContext, hideComments: true });
+  const byIndex = new Map(pair.projection.changes.map((change) => [change.changeIndex, change]));
+  assert.equal(byIndex.has(0), false);
+  // Merged chunk: base window is line 3 only (projected 0), modified lines 3..4 (projected 0..1).
+  assert.equal(byIndex.get(1)?.modifiedWindowEnd, 2);
+  assert.equal(byIndex.get(2)?.modifiedWindowEnd, 2);
+  assert.equal(byIndex.get(1)?.baseWindowEnd, 1);
+  assert.deepEqual(byIndex.get(1)?.changeIndexes, [1, 2]);
+  // Deletion-only chunk: base window end exists, the modified side has none.
+  assert.equal(byIndex.get(3)?.baseWindowEnd, 3);
+  assert.equal(byIndex.get(3)?.modifiedWindowEnd, undefined);
+});
