@@ -479,6 +479,16 @@ export function buildDiffRows(
   diff: SemanticDiff | undefined,
   contextLines = DEFAULT_DIFF_CONTEXT_LINES,
 ): ReviewDiffRow[] {
+  return buildDiffRowsResult(oldText, newText, diff, contextLines).rows;
+}
+
+/** Rows plus whether the source alignment is precise (see `lineAlignment`). */
+export function buildDiffRowsResult(
+  oldText: string,
+  newText: string,
+  diff: SemanticDiff | undefined,
+  contextLines = DEFAULT_DIFF_CONTEXT_LINES,
+): { rows: ReviewDiffRow[]; exact: boolean } {
   const oldLines = splitLines(oldText);
   const newLines = splitLines(newText);
   const semanticOld = semanticLineSet(diff, "old");
@@ -487,7 +497,8 @@ export function buildDiffRows(
   const refactoringNew = refactoringLineSet(diff, "new");
   const scopeOld = scopeTrailLineMap(diff, "old");
   const scopeNew = scopeTrailLineMap(diff, "new");
-  const operations = lineOperations(oldLines, newLines);
+  const alignment = lineAlignment(oldLines, newLines);
+  const operations = alignment.operations;
   const rows: ReviewDiffRow[] = [];
   for (let index = 0; index < operations.length; index += 1) {
     const operation = operations[index];
@@ -542,7 +553,10 @@ export function buildDiffRows(
       scopeTrail: scopeNew.get(operation.newIndex),
     });
   }
-  return collapseUninterestingRows(withRowIds(compactRows(rows)), contextLines);
+  return {
+    rows: collapseUninterestingRows(withRowIds(compactRows(rows)), contextLines),
+    exact: alignment.exact,
+  };
 }
 
 export function shouldPairChangedLines(oldText: string, newText: string): boolean {
@@ -578,10 +592,161 @@ export type LineOperation =
   | { type: "delete"; oldIndex: number }
   | { type: "insert"; newIndex: number };
 
-export function lineOperations(oldLines: string[], newLines: string[]): LineOperation[] {
-  if (oldLines.length * newLines.length > 120_000) {
-    return positionalOperations(oldLines, newLines);
+/** Cell budget for the exact LCS table (oldLines × newLines). */
+export const LCS_CELL_BUDGET = 120_000;
+/** Edit-distance budget for the bounded Myers fallback (memory ~ D² ints). */
+export const MYERS_MAX_EDITS = 1_000;
+
+export interface LineAlignment {
+  operations: LineOperation[];
+  /**
+   * False when the lines could not be aligned within the budgets: the
+   * operations are then a positional pairing that must not be presented as
+   * precise source evidence (issue 127).
+   */
+  exact: boolean;
+}
+
+/**
+ * Align two line arrays. Small inputs use the exact LCS table; larger ones
+ * strip the common prefix/suffix and use the LCS table on the remainder when
+ * it fits, else a bounded Myers O(ND) diff. Only when the edit distance itself
+ * exceeds MYERS_MAX_EDITS is the result marked inexact.
+ */
+export function lineAlignment(oldLines: string[], newLines: string[]): LineAlignment {
+  if (oldLines.length * newLines.length <= LCS_CELL_BUDGET) {
+    return { operations: lcsOperations(oldLines, newLines), exact: true };
   }
+  let prefix = 0;
+  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) {
+    prefix += 1;
+  }
+  let suffix = 0;
+  while (
+    suffix < oldLines.length - prefix
+    && suffix < newLines.length - prefix
+    && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+  const oldMiddle = oldLines.slice(prefix, oldLines.length - suffix);
+  const newMiddle = newLines.slice(prefix, newLines.length - suffix);
+  let middle: LineOperation[] | undefined = oldMiddle.length * newMiddle.length <= LCS_CELL_BUDGET
+    ? lcsOperations(oldMiddle, newMiddle)
+    : myersOperations(oldMiddle, newMiddle, MYERS_MAX_EDITS);
+  const exact = middle !== undefined;
+  middle ??= positionalOperations(oldMiddle, newMiddle);
+  const operations: LineOperation[] = [];
+  for (let index = 0; index < prefix; index += 1) {
+    operations.push({ type: "equal", oldIndex: index, newIndex: index });
+  }
+  for (const operation of middle) {
+    if (operation.type === "equal") {
+      operations.push({ type: "equal", oldIndex: operation.oldIndex + prefix, newIndex: operation.newIndex + prefix });
+    } else if (operation.type === "delete") {
+      operations.push({ type: "delete", oldIndex: operation.oldIndex + prefix });
+    } else {
+      operations.push({ type: "insert", newIndex: operation.newIndex + prefix });
+    }
+  }
+  for (let index = 0; index < suffix; index += 1) {
+    operations.push({
+      type: "equal",
+      oldIndex: oldLines.length - suffix + index,
+      newIndex: newLines.length - suffix + index,
+    });
+  }
+  return { operations, exact };
+}
+
+export function lineOperations(oldLines: string[], newLines: string[]): LineOperation[] {
+  return lineAlignment(oldLines, newLines).operations;
+}
+
+/**
+ * Myers' greedy O(ND) shortest edit script, keeping only the 2d+1 live
+ * diagonals per step. Returns undefined when more than `maxEdits` edits are
+ * needed. Within each changed run deletions precede insertions, matching the
+ * LCS path so delete/insert pairs still render as changes.
+ */
+export function myersOperations(oldLines: string[], newLines: string[], maxEdits: number): LineOperation[] | undefined {
+  const n = oldLines.length;
+  const m = newLines.length;
+  const offset = n + m + 1;
+  const v = new Int32Array(2 * offset + 1);
+  const trace: Int32Array[] = [];
+  let found = -1;
+  for (let d = 0; d <= Math.min(maxEdits, n + m); d += 1) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1])
+        ? v[offset + k + 1]
+        : v[offset + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && oldLines[x] === newLines[y]) {
+        x += 1;
+        y += 1;
+      }
+      v[offset + k] = x;
+      if (x >= n && y >= m) {
+        found = d;
+        break;
+      }
+    }
+    trace.push(v.slice(offset - d, offset + d + 1));
+    if (found >= 0) {
+      break;
+    }
+  }
+  if (found < 0) {
+    return undefined;
+  }
+  const reversed: LineOperation[] = [];
+  let x = n;
+  let y = m;
+  for (let d = found; d > 0; d -= 1) {
+    const previous = trace[d - 1];
+    const at = (k: number) => previous[k + d - 1];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const prevX = at(prevK);
+    const prevY = prevX - prevK;
+    const midX = prevK === k + 1 ? prevX : prevX + 1;
+    const midY = prevK === k + 1 ? prevY + 1 : prevY;
+    while (x > midX && y > midY) {
+      x -= 1;
+      y -= 1;
+      reversed.push({ type: "equal", oldIndex: x, newIndex: y });
+    }
+    reversed.push(prevK === k + 1 ? { type: "insert", newIndex: prevY } : { type: "delete", oldIndex: prevX });
+    x = prevX;
+    y = prevY;
+  }
+  while (x > 0 && y > 0) {
+    x -= 1;
+    y -= 1;
+    reversed.push({ type: "equal", oldIndex: x, newIndex: y });
+  }
+  const operations = reversed.reverse();
+  // Stable reorder: deletions before insertions inside each changed run.
+  const ordered: LineOperation[] = [];
+  let run: LineOperation[] = [];
+  const flush = () => {
+    ordered.push(...run.filter((op) => op.type === "delete"), ...run.filter((op) => op.type === "insert"));
+    run = [];
+  };
+  for (const operation of operations) {
+    if (operation.type === "equal") {
+      flush();
+      ordered.push(operation);
+    } else {
+      run.push(operation);
+    }
+  }
+  flush();
+  return ordered;
+}
+
+function lcsOperations(oldLines: string[], newLines: string[]): LineOperation[] {
   const table = Array.from({ length: oldLines.length + 1 }, () => new Array<number>(newLines.length + 1).fill(0));
   for (let oldIndex = oldLines.length - 1; oldIndex >= 0; oldIndex -= 1) {
     for (let newIndex = newLines.length - 1; newIndex >= 0; newIndex -= 1) {
@@ -639,7 +804,9 @@ export function compactRows(rows: ReviewDiffRow[]): ReviewDiffRow[] {
   if (rows.length <= 220) {
     return rows;
   }
-  const important = new Set<number>();
+  // The last row always survives: it tells hunk payloads whether each side
+  // ends with a final newline (see hunkTextPayloadAt).
+  const important = new Set<number>([rows.length - 1]);
   rows.forEach((row, index) => {
     if (row.kind !== "equal" || row.semantic) {
       for (let offset = -3; offset <= 3; offset += 1) {

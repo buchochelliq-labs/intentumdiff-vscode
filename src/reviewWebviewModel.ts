@@ -30,6 +30,7 @@ import {
 import {
   DEFAULT_DIFF_CONTEXT_LINES,
   buildDiffRows,
+  buildDiffRowsResult,
   diffRows,
   diffStats,
   hunkTextPayload,
@@ -233,6 +234,12 @@ export interface ReviewPanelModel {
   oldText: string;
   newText: string;
   diffRows: ReviewDiffRow[];
+  /**
+   * True when the source lines could not be aligned within the textual diff
+   * budget. The rows are then not precise evidence: the panel shows a notice
+   * pointing at the native diff and offers no hunk actions (issue 127).
+   */
+  diffRowsImprecise?: boolean;
   ref: string;
   /** Optional AI-drafted release narrative (BYOK/Copilot). Filled asynchronously. */
   releaseNarrative?: string;
@@ -441,8 +448,11 @@ export function buildReviewPanelModel(
   ref: string,
   options: { contextLines?: number } = {},
 ): ReviewPanelModel {
-  const diffRows = buildDiffRows(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
-  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, diffRows));
+  const alignment = buildDiffRowsResult(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
+  const diffRows = alignment.rows;
+  // Imprecise rows never back per-entry hunk actions.
+  const evidenceRows = alignment.exact ? diffRows : [];
+  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, evidenceRows));
   const semanticPair = file.diff
     ? buildSemanticOnlyDocuments(oldText, newText, file.diff, DEFAULT_SEMANTIC_ONLY_OPTIONS)
     : undefined;
@@ -456,6 +466,7 @@ export function buildReviewPanelModel(
     oldText,
     newText,
     diffRows,
+    ...(alignment.exact ? {} : { diffRowsImprecise: true }),
     ref,
     assetDiff: assetDiffFromMetadata(file.diff?.metadata),
     workingTreeImage: typeof file.diff?.metadata?.working_tree_image === "string"
@@ -721,7 +732,9 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
   const totalChanges = counts.added + counts.removed + counts.changed + counts.refactored + counts.moved;
   const rows = model.diffRows ?? [];
   const hasContent = rows.some((row) => row.kind !== "equal");
-  const body = hasContent
+  const body = model.diffRowsImprecise
+    ? `<p class="fallback-notice" role="note">This file's source changes are too large to align line by line here, so no source evidence or hunk actions are shown. Open the native diff for the exact changes.</p>`
+    : hasContent
     ? `<div class="diff-column-heads" aria-hidden="true">
           <span></span><span></span><span>Base &middot; ${escapeHtml(model.ref)}</span>
           <span></span><span></span><span>Working tree</span>
