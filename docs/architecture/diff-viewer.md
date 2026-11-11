@@ -101,6 +101,12 @@ consumes `SemanticDiff` (`src/types.ts`) and renders it across the surfaces abov
 - **Intent summary / Release Notes / Evidence / Diagnostics** views.
 - An **editable semantic-diff tab** with per-hunk **Stage/Revert** (git index patches) and
   inline editing, syntax-highlighted via the vendored highlighter in `media/highlight/`.
+  Pure insertions and deletions are ordinary zero-length-side hunks: the payload carries
+  explicit anchors (`oldLinesBefore`/`newLinesBefore`, 0 = beginning of file), up to three
+  unchanged context lines and missing-final-newline flags (`hunkTextPayloadAt`). Index
+  patches include that context so `git apply --cached` validates against the actual index
+  (a staged edit elsewhere shifts; one that rewrote the context is rejected), and reverting a
+  deletion re-inserts at the anchor only after verifying the neighbouring working lines.
 - The **perceptual asset diff** for images (`renderAssetDiffWorkbench` / `assetModeViewer`):
   side-by-side / onion / swipe / difference modes, a marching-ants change lasso over both
   panes, interactive hotspots, blink comparator, and per-channel histograms. All artifacts

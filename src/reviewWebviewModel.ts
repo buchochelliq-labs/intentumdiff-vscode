@@ -33,6 +33,7 @@ import {
   diffRows,
   diffStats,
   hunkTextPayload,
+  hunkTextPayloadAt,
   type DiffStats,
 } from "./reviewDiffRows";
 import {
@@ -93,6 +94,13 @@ export interface ReviewWebviewHunkPayload {
   newStartLine?: number;
   newEndLine?: number;
   reviewedNewLines?: string[];
+  /** Zero-length-side anchors and unchanged context (see hunkTextPayloadAt). */
+  oldLinesBefore?: number;
+  newLinesBefore?: number;
+  contextBefore?: string[];
+  contextAfter?: string[];
+  oldMissingFinalNewline?: boolean;
+  newMissingFinalNewline?: boolean;
 }
 export interface ReviewWebviewMessage {
   command: ReviewWebviewCommand;
@@ -961,7 +969,7 @@ function entryHunkPayload(entry: ReviewEntry, rows: ReviewDiffRow[]): ReviewWebv
     }
     end += 1;
   }
-  const hunk = hunkTextPayload(rows.slice(start, end));
+  const hunk = hunkTextPayloadAt(rows, start, end);
   return hunk.oldLines.length > 0 || hunk.newLines.length > 0 ? hunk : undefined;
 }
 

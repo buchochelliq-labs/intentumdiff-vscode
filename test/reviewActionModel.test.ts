@@ -234,7 +234,7 @@ test("semantic hunk edit reverts modified-side range to base-side text", () => {
   assert.match(result.edit?.previewPatch ?? "", /IntentumDiff semantic hunk revertHunk/u);
 });
 
-test("semantic hunk edit rejects missing hunk text before editor mutation", () => {
+test("semantic hunk revert of a pure insertion deletes the reviewed lines", () => {
   const result = semanticReviewHunkEditForPayload(
     {
       folderUri: "file:///repo",
@@ -261,8 +261,11 @@ test("semantic hunk edit rejects missing hunk text before editor mutation", () =
     () => path.normalize("C:/repo"),
   );
 
-  assert.equal(result.error, "semantic review hunk revert has no base-side lines");
-  assert.equal(result.edit, undefined);
+  // A pure insertion has no base-side lines: reverting it deletes the reviewed
+  // working lines (issue 125), it is not missing data.
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.edit?.replacementLines, []);
+  assert.deepEqual(result.edit?.expectedLines, ["function main() {", "  boot();", "  logReady();"]);
 });
 
 test("semantic hunk index patch rejects unsafe relative paths", () => {

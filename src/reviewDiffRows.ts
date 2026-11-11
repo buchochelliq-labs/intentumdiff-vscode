@@ -130,7 +130,7 @@ export function hunkHeader(rows: ReviewDiffRow[], startIndex: number, payload: R
   const oldLabel = row.oldLine === undefined ? "base -" : `base L${row.oldLine}`;
   const newLabel = row.newLine === undefined ? "working -" : `working L${row.newLine}`;
   const scopeTrail = hunkScopeTrail(rows, startIndex);
-  const actions = payload ? hunkActionButtons(payload, row, rows.slice(startIndex, startIndex + count), hunkId) : "";
+  const actions = payload ? hunkActionButtons(payload, row, rows.slice(startIndex, startIndex + count), hunkId, { rows, start: startIndex }) : "";
   return `<div class="diff-hunk">
     <span class="hunk-glyph">${sourceFallback ? "source" : "intent"}</span>
     <span class="hunk-title"><strong>${sourceFallback ? "Source" : "Semantic"} hunk</strong><small>${escapeHtml(oldLabel)} -> ${escapeHtml(newLabel)}</small>${scopeTrailHtml(scopeTrail, row.id)}</span>
@@ -140,9 +140,17 @@ export function hunkHeader(rows: ReviewDiffRow[], startIndex: number, payload: R
   </div>`;
 }
 
-export function hunkActionButtons(payload: ReviewWebviewPayload, row: ReviewDiffRow, hunkRows: ReviewDiffRow[], hunkId: string): string {
+export function hunkActionButtons(
+  payload: ReviewWebviewPayload,
+  row: ReviewDiffRow,
+  hunkRows: ReviewDiffRow[],
+  hunkId: string,
+  surrounding?: { rows: ReviewDiffRow[]; start: number },
+): string {
   const change = hunkSyntheticChange(row, hunkRows);
-  const hunk = hunkTextPayload(hunkRows);
+  const hunk = surrounding
+    ? hunkTextPayloadAt(surrounding.rows, surrounding.start, surrounding.start + hunkRows.length)
+    : hunkTextPayload(hunkRows);
   const hunkPayload = { ...payload, change, hunk };
   // "Apply edits" is disabled until a working cell in this hunk is edited; on
   // click the script collects the hunk's contenteditable cells into newLines and
@@ -187,6 +195,79 @@ export function hunkTextPayload(hunkRows: ReviewDiffRow[]): ReviewWebviewHunkPay
     oldEndLine: maxLine(oldNumbers),
     newStartLine: minLine(newNumbers),
     newEndLine: maxLine(newNumbers),
+  };
+}
+
+/** Unchanged lines of context recorded around a hunk for anchoring/verification. */
+export const HUNK_CONTEXT_LINES = 3;
+
+/**
+ * Hunk payload for `rows[start, end)` with explicit zero-length-side anchors
+ * (issue 125): `oldLinesBefore`/`newLinesBefore` count the lines preceding the
+ * hunk on each side (0 = beginning of file), and up to HUNK_CONTEXT_LINES
+ * unchanged neighbours on each side are recorded as context.
+ */
+export function hunkTextPayloadAt(rows: ReviewDiffRow[], start: number, end: number): ReviewWebviewHunkPayload {
+  const flat: ReviewDiffRow[] = [];
+  let flatStart = 0;
+  let flatEnd = 0;
+  rows.forEach((row, index) => {
+    if (index === start) flatStart = flat.length;
+    if (index === end) flatEnd = flat.length;
+    if (row.kind === "collapsed") {
+      flat.push(...(row.hiddenRows ?? []));
+    } else {
+      flat.push(row);
+    }
+  });
+  if (end >= rows.length) flatEnd = flat.length;
+  // splitLines() turns a final EOL into a trailing empty "line" on that side.
+  // It is not a file line: strip it from the hunk and context, and record
+  // instead whether the side ends WITHOUT a final newline.
+  const oldMax = Math.max(0, ...flat.map((row) => row.oldLine ?? 0));
+  const newMax = Math.max(0, ...flat.map((row) => row.newLine ?? 0));
+  const oldEolLine = flat.some((row) => row.oldLine === oldMax && row.oldText === "") ? oldMax : undefined;
+  const newEolLine = flat.some((row) => row.newLine === newMax && row.newText === "") ? newMax : undefined;
+  const isEolArtifact = (row: ReviewDiffRow) =>
+    (row.oldLine === undefined || row.oldLine === oldEolLine)
+    && (row.newLine === undefined || row.newLine === newEolLine);
+  const hunkRows = flat.slice(flatStart, flatEnd).map((row) => ({
+    ...row,
+    oldLine: row.oldLine === oldEolLine ? undefined : row.oldLine,
+    newLine: row.newLine === newEolLine ? undefined : row.newLine,
+  }));
+  const hunk = hunkTextPayload(hunkRows);
+  let oldLinesBefore = 0;
+  let newLinesBefore = 0;
+  for (let index = flatStart - 1; index >= 0; index -= 1) {
+    if (oldLinesBefore === 0 && flat[index].oldLine !== undefined) oldLinesBefore = flat[index].oldLine as number;
+    if (newLinesBefore === 0 && flat[index].newLine !== undefined) newLinesBefore = flat[index].newLine as number;
+    if (oldLinesBefore !== 0 && newLinesBefore !== 0) break;
+  }
+  const contextBefore: string[] = [];
+  for (let index = flatStart - 1; index >= 0 && contextBefore.length < HUNK_CONTEXT_LINES; index -= 1) {
+    const row = flat[index];
+    if (row.kind !== "equal" || row.oldText !== row.newText) break;
+    contextBefore.unshift(row.newText ?? "");
+  }
+  const contextAfter: string[] = [];
+  for (let index = flatEnd; index < flat.length && contextAfter.length < HUNK_CONTEXT_LINES; index += 1) {
+    const row = flat[index];
+    if (row.kind !== "equal" || row.oldText !== row.newText || isEolArtifact(row)) break;
+    contextAfter.push(row.newText ?? "");
+  }
+  const oldLastReal = oldEolLine === undefined ? oldMax : oldMax - 1;
+  const newLastReal = newEolLine === undefined ? newMax : newMax - 1;
+  const oldReachesEnd = oldLinesBefore + hunk.oldLines.length + contextAfter.length === oldLastReal;
+  const newReachesEnd = newLinesBefore + hunk.newLines.length + contextAfter.length === newLastReal;
+  return {
+    ...hunk,
+    oldLinesBefore,
+    newLinesBefore,
+    contextBefore,
+    contextAfter,
+    oldMissingFinalNewline: oldLastReal > 0 && oldEolLine === undefined && oldReachesEnd,
+    newMissingFinalNewline: newLastReal > 0 && newEolLine === undefined && newReachesEnd,
   };
 }
 
