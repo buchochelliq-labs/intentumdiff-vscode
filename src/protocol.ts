@@ -71,18 +71,28 @@ export interface LiveServerClientOptions {
   allocateSeq?: () => number;
 }
 
+/**
+ * Metadata for one in-flight request. It lives only while the request is
+ * active: a terminal response (success or error), a cancel, or supersession
+ * by a newer request for the same lane removes it (issue 128), so a long
+ * session retains state proportional to active work.
+ */
+type PendingRequest =
+  | { kind: "diff"; path: string; diffKey: string; purpose: DiffRequestPurpose }
+  | { kind: "review" }
+  | { kind: "asset_diff"; path: string }
+  | { kind: "hello" };
+
 export class LiveServerClient {
   private seq = 0;
   /** Lowest and highest sequence numbers this client has issued (0 = none yet). */
   private firstIssuedSeq = 0;
   private lastIssuedSeq = 0;
-  /** Request kind per issued seq, used to decide whether an error is still owned. */
-  private readonly seqKinds = new Map<number, "diff" | "review" | "asset_diff" | "hello" | "cancel">();
+  /** Active requests only; see PendingRequest. */
+  private readonly pending = new Map<number, PendingRequest>();
+  /** Current seq per diff lane (`purpose:path`), only while that request is active. */
   private readonly pathToSeq = new Map<string, number>();
-  private readonly seqToPath = new Map<number, string>();
-  private readonly seqToDiffKey = new Map<number, string>();
-  private readonly seqToDiffPurpose = new Map<number, DiffRequestPurpose>();
-  private readonly seqToAssetPath = new Map<number, string>();
+  /** The newest review seq (staleness), and whether it is still active. */
   private latestReviewSeq = 0;
   private readonly listeners: Array<(event: ClientEvent) => void> = [];
   ready: ReadyMessage | undefined;
@@ -92,63 +102,75 @@ export class LiveServerClient {
     private readonly options: LiveServerClientOptions = {},
   ) {}
 
-  private nextSeq(kind: "diff" | "review" | "asset_diff" | "hello" | "cancel"): number {
-    const seq = this.options.allocateSeq ? this.options.allocateSeq() : this.seq + 1;
-    this.seq = seq;
-    if (this.firstIssuedSeq === 0) {
-      this.firstIssuedSeq = seq;
-    }
-    this.lastIssuedSeq = seq;
-    this.seqKinds.set(seq, kind);
-    return seq;
+  /** Number of active requests (bounded by in-flight work, not session lifetime). */
+  get pendingCount(): number {
+    return this.pending.size;
   }
 
-  /**
-   * True when an error for `seq` belongs to a request this client issued that
-   * is no longer the current one for its lane (superseded diff, older review).
-   * Such errors are obsolete and must not reach the host.
-   */
-  private isObsoleteSeq(seq: number): boolean {
-    if (seq <= 0 || this.firstIssuedSeq === 0 || seq > this.lastIssuedSeq) {
-      return false;
-    }
-    if (seq < this.firstIssuedSeq) {
-      // Predates this client: issued by a retired session sharing the allocator.
-      return true;
-    }
-    const kind = this.seqKinds.get(seq);
-    if (kind === "diff") {
-      const diffKey = this.seqToDiffKey.get(seq);
-      return diffKey === undefined || this.pathToSeq.get(diffKey) !== seq;
-    }
-    if (kind === "review") {
-      return this.latestReviewSeq !== seq;
-    }
-    if (kind === "asset_diff") {
-      return !this.seqToAssetPath.has(seq);
-    }
-    return kind === undefined;
+  /** Number of active diff lanes. */
+  get activeDiffLaneCount(): number {
+    return this.pathToSeq.size;
   }
 
   onEvent(listener: (event: ClientEvent) => void): void {
     this.listeners.push(listener);
   }
 
+  private allocate(): number {
+    const seq = this.options.allocateSeq ? this.options.allocateSeq() : this.seq + 1;
+    this.seq = seq;
+    if (this.firstIssuedSeq === 0) {
+      this.firstIssuedSeq = seq;
+    }
+    this.lastIssuedSeq = seq;
+    return seq;
+  }
+
+  private start(request: PendingRequest): number {
+    const seq = this.allocate();
+    this.pending.set(seq, request);
+    return seq;
+  }
+
+  /** Release every piece of metadata for `seq`. */
+  private release(seq: number): void {
+    const request = this.pending.get(seq);
+    this.pending.delete(seq);
+    if (request?.kind === "diff" && this.pathToSeq.get(request.diffKey) === seq) {
+      this.pathToSeq.delete(request.diffKey);
+    }
+    if (request?.kind === "review" && this.latestReviewSeq === seq) {
+      this.latestReviewSeq = 0;
+    }
+  }
+
+  /**
+   * True when an error for `seq` does not belong to an active request this
+   * client issued (superseded diff, older or cancelled review, a request that
+   * already completed, or a seq that predates this client). Such errors are
+   * obsolete and must not reach the host.
+   */
+  private isObsoleteSeq(seq: number): boolean {
+    if (seq <= 0 || this.firstIssuedSeq === 0 || seq > this.lastIssuedSeq) {
+      return false;
+    }
+    return !this.pending.has(seq);
+  }
+
   diff(path: string, content: string, options: DiffRequestOptions = {}): number {
-    const diffKey = diffRequestKey(path, options.purpose);
+    const purpose = options.purpose ?? "live";
+    const diffKey = diffRequestKey(path, purpose);
     const previousSeq = this.pathToSeq.get(diffKey);
-    const nextSeq = this.nextSeq("diff");
+    const nextSeq = this.start({ kind: "diff", path, diffKey, purpose });
     if (previousSeq !== undefined) {
       this.send({
         op: "cancel",
         seq: previousSeq,
         path,
       });
+      this.release(previousSeq);
     }
     this.pathToSeq.set(diffKey, nextSeq);
-    this.seqToPath.set(nextSeq, path);
-    this.seqToDiffKey.set(nextSeq, diffKey);
-    this.seqToDiffPurpose.set(nextSeq, options.purpose ?? "live");
     this.send({
       op: "diff",
       seq: nextSeq,
@@ -161,13 +183,16 @@ export class LiveServerClient {
   }
 
   hello(): void {
-    this.send({ op: "hello", seq: this.nextSeq("hello") });
+    this.send({ op: "hello", seq: this.start({ kind: "hello" }) });
   }
 
   review(options: { oldRef?: string; newRef?: string; stream?: boolean } = {}): number {
-    const nextSeq = this.nextSeq("review");
-    if (this.latestReviewSeq > 0) {
-      this.send({ op: "cancel", seq: this.latestReviewSeq });
+    const previous = this.latestReviewSeq;
+    const nextSeq = this.start({ kind: "review" });
+    if (previous > 0 && this.pending.has(previous)) {
+      // Cancel only a review that is still running, never completed work.
+      this.send({ op: "cancel", seq: previous });
+      this.release(previous);
     }
     this.latestReviewSeq = nextSeq;
     this.send({
@@ -187,8 +212,7 @@ export class LiveServerClient {
    * store, and materialising them is the engine's job. The extension never opens an image.
    */
   assetDiff(path: string, options: { ref?: string } = {}): number {
-    const nextSeq = this.nextSeq("asset_diff");
-    this.seqToAssetPath.set(nextSeq, path);
+    const nextSeq = this.start({ kind: "asset_diff", path });
     this.send({
       op: "asset_diff",
       seq: nextSeq,
@@ -200,18 +224,32 @@ export class LiveServerClient {
 
   /** Forget an asset request once its outcome (result or error) has been handled. */
   forgetAssetDiff(seq: number): void {
-    this.seqToAssetPath.delete(seq);
+    if (this.pending.get(seq)?.kind === "asset_diff") {
+      this.release(seq);
+    }
   }
 
+  /**
+   * Cancel an active request by seq, or the active diff(s) for a path. Work
+   * that already completed (or was never issued) is not cancelled again; the
+   * cancelled request's metadata is released so its late answer is dropped.
+   */
   cancel(pathOrSeq: string | number): void {
     if (typeof pathOrSeq === "number") {
+      if (!this.pending.has(pathOrSeq)) {
+        return;
+      }
       this.send({ op: "cancel", seq: pathOrSeq });
+      this.release(pathOrSeq);
       return;
     }
-    const seq = this.pathToSeq.get(diffRequestKey(pathOrSeq, "live"))
-      ?? this.pathToSeq.get(diffRequestKey(pathOrSeq, "review"))
-      ?? this.nextSeq("cancel");
-    this.send({ op: "cancel", seq, path: pathOrSeq });
+    for (const purpose of ["live", "review"] as const) {
+      const seq = this.pathToSeq.get(diffRequestKey(pathOrSeq, purpose));
+      if (seq !== undefined) {
+        this.send({ op: "cancel", seq, path: pathOrSeq });
+        this.release(seq);
+      }
+    }
   }
 
   handleLine(line: string): void {
@@ -257,6 +295,8 @@ export class LiveServerClient {
         // current request's outcome; ownership is checked before emitting.
         return;
       }
+      // An error is terminal for its request.
+      this.release(seq);
       this.emit({
         kind: "error",
         seq,
@@ -268,34 +308,42 @@ export class LiveServerClient {
       return;
     }
 
+    const request = this.pending.get(seq);
+    if (request?.kind === "hello") {
+      this.release(seq);
+      return;
+    }
+
     if (response.op === "diff" && response.diff) {
-      const path = this.seqToPath.get(seq);
-      const diffKey = this.seqToDiffKey.get(seq);
-      const purpose = this.seqToDiffPurpose.get(seq);
-      if (!path || !diffKey || !purpose || this.pathToSeq.get(diffKey) !== seq) {
+      if (request?.kind !== "diff" || this.pathToSeq.get(request.diffKey) !== seq) {
         return;
       }
-      this.emit({ kind: "diff", result: { path, seq, purpose, response } });
+      // `done: false` marks an intermediate stream frame; anything else is terminal.
+      if (response.done !== false) {
+        this.release(seq);
+      }
+      this.emit({ kind: "diff", result: { path: request.path, seq, purpose: request.purpose, response } });
       return;
     }
 
     if (response.op === "asset_diff" && response.result) {
-      const path = this.seqToAssetPath.get(seq);
-      if (path === undefined) {
+      if (request?.kind !== "asset_diff") {
         return;
       }
-      this.seqToAssetPath.delete(seq);
+      this.release(seq);
       this.emit({
         kind: "asset_diff",
-        result: { seq, path, manifest: response.result, response },
+        result: { seq, path: request.path, manifest: response.result, response },
       });
       return;
     }
 
     if (response.op === "review" && response.commit_diff) {
-      if (this.latestReviewSeq !== seq) {
+      if (request?.kind !== "review" || this.latestReviewSeq !== seq) {
         return;
       }
+      // The commit-level result is the review's terminal frame.
+      this.release(seq);
       this.emit({
         kind: "review",
         result: {
@@ -308,7 +356,8 @@ export class LiveServerClient {
     }
 
     if (response.op === "review_file" && response.file_diff) {
-      if (this.latestReviewSeq !== seq) {
+      // Intermediate stream frame: the review stays active.
+      if (request?.kind !== "review" || this.latestReviewSeq !== seq) {
         return;
       }
       this.emit({
