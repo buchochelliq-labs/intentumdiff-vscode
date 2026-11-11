@@ -16,7 +16,11 @@ remain next to it in `wasm/`. There is no automatic Python fallback.
 
 - **The native diff editor is primary** — diffs open with `vscode.diff` (left: read-only
   `intentumdiff-base:` from `git show`; right: the real working-tree file). Editing re-runs the
-  engine (debounced) and refreshes intent live. No webview diff editors.
+  engine (debounced) and refreshes intent live. No webview diff editors. An open comparison
+  records its identity (baseline ref + working-tree right side); every live or review result
+  for the same file and baseline reconciles it in place (CodeLens, status, navigation and the
+  semantic-only projection read the same current diff). A full refresh keeps contexts whose
+  tabs are still open instead of orphaning them.
 - **Intent** surfaces as CodeLens (`CATEGORY · why`), a Peek command, and semantic decorations
   bound to the contributed `intentumdiff.semanticChanges.*` colors. Risk derives from category.
 - **One review webview** (dashboard, Intent/Risk/Evidence/Notes/Release-Notes tabs, per-hunk
