@@ -791,7 +791,9 @@ test("rendered webviews escape labels and source text and include a nonce CSP", 
   assert.match(panelHtml, /class="entry-actions" aria-label="Semantic entity actions"/u);
   assert.match(panelHtml, />Stage<\/span><\/button>/u);
   assert.match(panelHtml, />Revert<\/span><\/button>/u);
-  assert.match(panelHtml, />Apply<\/span><\/button>/u);
+  // The entity "Apply" is a non-mutating preview (issue 119).
+  assert.match(panelHtml, /data-command="previewHunk"[^>]*title="Preview"/u);
+  assert.doesNotMatch(panelHtml, /data-command="applyHunk"/u);
   assert.match(panelHtml, /command === "editHunk"/u);
   assert.match(panelHtml, /payload\.hunk\.newLines = editedLines/u);
   assert.match(panelHtml, /commandButton && commandButton\.getAttribute\("data-command"\) !== "reveal"/u);

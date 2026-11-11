@@ -162,7 +162,7 @@ export function hunkActionButtons(payload: ReviewWebviewPayload, row: ReviewDiff
     ${actionButton("Edit in native", "openNativeDiff", editInNativePayload, "native")}
     ${actionButton("Stage hunk", "stageHunk", { ...hunkPayload, actionKind: "stageHunk" }, "accept")}
     ${actionButton("Revert hunk", "revertHunk", { ...hunkPayload, actionKind: "revertHunk" }, "risk")}
-    ${actionButton("Preview apply", "applyHunk", { ...hunkPayload, actionKind: "applyHunk" }, "detail")}
+    ${actionButton("Preview apply", "previewHunk", { ...hunkPayload, actionKind: "applyHunk" }, "detail")}
     ${applyEdits}
   </span>`;
 }
@@ -177,6 +177,9 @@ export function hunkTextPayload(hunkRows: ReviewDiffRow[]): ReviewWebviewHunkPay
   return {
     oldLines,
     newLines,
+    // Exact reviewed working-tree lines; the host verifies the live document
+    // against these before any write (issue 119).
+    reviewedNewLines: [...newLines],
     oldStartLine: minLine(oldNumbers),
     oldEndLine: maxLine(oldNumbers),
     newStartLine: minLine(newNumbers),

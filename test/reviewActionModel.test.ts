@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import {
+  planVerifiedHunkTextEdit,
   reviewActionTargetForPayload,
   semanticHunkIndexPatch,
   semanticReviewHunkEditForPayload,
@@ -281,4 +282,65 @@ test("semantic hunk index patch rejects unsafe relative paths", () => {
     "+new",
     "",
   ].join("\n"));
+});
+
+test("verified hunk edit plan rejects stale working-tree content and keeps EOL/final-newline state", () => {
+  const edit = {
+    editStartLine: 2,
+    editEndLine: 2,
+    expectedLines: ["b"],
+    replacementLines: ["B"],
+  };
+  assert.match(
+    planVerifiedHunkTextEdit({ lines: ["a", "b changed", "c", ""], eol: "\n" }, edit).error ?? "",
+    /changed since it was reviewed/u,
+  );
+  assert.match(
+    planVerifiedHunkTextEdit({ lines: ["a", "b", "c"], eol: "\n" }, { ...edit, expectedLines: undefined }).error ?? "",
+    /no reviewed source/u,
+  );
+  assert.match(
+    planVerifiedHunkTextEdit({ lines: ["a", ""], eol: "\n" }, edit).error ?? "",
+    /past the end of the file/u,
+  );
+  // Middle line in a CRLF file: whole-line replacement with the document EOL.
+  assert.deepEqual(planVerifiedHunkTextEdit({ lines: ["a", "b", "c", ""], eol: "\r\n" }, edit).edit, {
+    startLine: 1, startCharacter: 0, endLine: 2, endCharacter: 0, text: "B\r\n",
+  });
+  // Last line with a final newline: the trailing empty entry keeps the EOL.
+  assert.deepEqual(planVerifiedHunkTextEdit({ lines: ["a", "b", ""], eol: "\n" }, edit).edit, {
+    startLine: 1, startCharacter: 0, endLine: 2, endCharacter: 0, text: "B\n",
+  });
+  // Last line without a final newline: no newline is introduced.
+  assert.deepEqual(planVerifiedHunkTextEdit({ lines: ["a", "b"], eol: "\n" }, edit).edit, {
+    startLine: 1, startCharacter: 0, endLine: 1, endCharacter: 1, text: "B",
+  });
+  // Deleting the last line without a final newline removes the preceding EOL.
+  assert.deepEqual(planVerifiedHunkTextEdit({ lines: ["a", "b"], eol: "\n" }, { ...edit, replacementLines: [] }).edit, {
+    startLine: 0, startCharacter: 1, endLine: 1, endCharacter: 1, text: "",
+  });
+});
+
+test("semantic hunk apply verifies against reviewed lines, not the edited ones", () => {
+  const result = semanticReviewHunkEditForPayload(
+    {
+      folderUri: "file:///repo",
+      relativePath: "src/app.ts",
+      actionKind: "applyHunk",
+      change: {
+        change_type: "MODIFICATION",
+        new_node: { label: "x", position: { start_line: 1, start_col: 0, end_line: 1, end_col: 0 } },
+      },
+      hunk: {
+        newStartLine: 1,
+        newEndLine: 1,
+        oldLines: ["old"],
+        newLines: ["edited\npasted"],
+        reviewedNewLines: ["reviewed"],
+      },
+    },
+    () => path.normalize("C:/repo"),
+  );
+  assert.deepEqual(result.edit?.expectedLines, ["reviewed"]);
+  assert.deepEqual(result.edit?.replacementLines, ["edited", "pasted"], "multiline edits split into document lines");
 });

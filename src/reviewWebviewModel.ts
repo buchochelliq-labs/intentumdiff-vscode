@@ -65,6 +65,7 @@ export type ReviewWebviewCommand =
   | "stageHunk"
   | "revertHunk"
   | "applyHunk"
+  | "previewHunk"
   | "editHunk"
   | "openTimelineSnapshot"
   | "cycleGrouping"
@@ -91,6 +92,7 @@ export interface ReviewWebviewHunkPayload {
   oldEndLine?: number;
   newStartLine?: number;
   newEndLine?: number;
+  reviewedNewLines?: string[];
 }
 export interface ReviewWebviewMessage {
   command: ReviewWebviewCommand;
@@ -573,7 +575,7 @@ export function isReviewWebviewMessage(value: unknown): value is ReviewWebviewMe
   if (!isRecord(value)) {
     return false;
   }
-  if (!["openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk", "applyHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes", "exportReleaseNotes", "refresh", "reveal"].includes(String(value.command))) {
+  if (!["openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk", "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes", "exportReleaseNotes", "refresh", "reveal"].includes(String(value.command))) {
     return false;
   }
   if (value.payload === undefined) {
@@ -1563,7 +1565,7 @@ function entryActionButtons(entry: ReviewWebviewEntry): string {
   return `<span class="entry-actions" aria-label="Semantic entity actions">
     ${actionButton("Stage", "stageHunk", { ...entry.payload, actionKind: "stageHunk" }, "accept")}
     ${actionButton("Revert", "revertHunk", { ...entry.payload, actionKind: "revertHunk" }, "risk")}
-    ${actionButton("Apply", "applyHunk", { ...entry.payload, actionKind: "applyHunk" }, "detail")}
+    ${actionButton("Preview", "previewHunk", { ...entry.payload, actionKind: "applyHunk" }, "detail")}
   </span>`;
 }
 
