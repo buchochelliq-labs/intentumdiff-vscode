@@ -8,7 +8,6 @@ import type {
   SchemaStatusMetadata,
 } from "./types";
 import {
-  isPresentationNoiseChange,
   reviewTargetForChange,
   type SemanticChangeTargetSide,
 } from "./mapper";
@@ -267,9 +266,9 @@ export function reviewEntriesForFile(file: ReviewFile): ReviewEntry[] {
     if (groupedChangeIndices.has(index)) {
       continue;
     }
-    if (isPresentationNoiseChange(change)) {
-      continue;
-    }
+    // No host-side noise test here: only the engine classifies noise (via a
+    // NOISE_SUPPRESSED group, handled above). An ungrouped change has no engine
+    // disposition and is kept as evidence (issue 131).
     const entryKind = promoteUngrouped ? groupEntryKind(kindForChange(change)) : undefined;
     if (entryKind) {
       promotedChangeEntries.push({ ...reviewEntryForChange(change, index, "change"), kind: entryKind });

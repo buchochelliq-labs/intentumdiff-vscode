@@ -112,8 +112,9 @@ export function reviewTargetForChange(change: SemanticChange): SemanticChangeTar
 
 export function diffToModifiedDecorations(diff: SemanticDiff): DecorationLike[] {
   const decorations: DecorationLike[] = [];
-  for (const change of diff.changes ?? []) {
-    if (isPresentationNoiseChange(change)) {
+  const engineNoise = engineNoiseChangeIndices(diff);
+  for (const [index, change] of (diff.changes ?? []).entries()) {
+    if (engineNoise.has(index)) {
       continue;
     }
     if (change.change_type === "DELETION") {
@@ -253,8 +254,9 @@ function isWordCharacter(value: string): boolean {
 
 export function diffToBaseDecorations(diff: SemanticDiff): DecorationLike[] {
   const decorations: DecorationLike[] = [];
-  for (const change of diff.changes ?? []) {
-    if (isPresentationNoiseChange(change)) {
+  const engineNoise = engineNoiseChangeIndices(diff);
+  for (const [index, change] of (diff.changes ?? []).entries()) {
+    if (engineNoise.has(index)) {
       continue;
     }
     if (change.change_type !== "DELETION") {
@@ -346,43 +348,29 @@ function isCommentNode(node: SemanticChange["old_node"]): boolean {
   return nodeType === "comment" || nodeType.endsWith("_comment") || nodeType.includes("comment");
 }
 
-export function isPresentationNoiseChange(change: SemanticChange): boolean {
-  if (change.change_type !== "MODIFICATION" || !change.old_node || !change.new_node) {
-    return false;
+/**
+ * Indices of changes the ENGINE classified as noise: owned by a
+ * `NOISE_SUPPRESSED` change group and by no other group. The extension may hide
+ * these from editor decorations (the tree still lists them as suppressed
+ * evidence). It never decides noise itself by comparing node trees (issue 131).
+ * Out-of-range indices are ignored (index-space contract).
+ */
+export function engineNoiseChangeIndices(diff: SemanticDiff): Set<number> {
+  const changeCount = diff.changes?.length ?? 0;
+  const noise = new Set<number>();
+  const shown = new Set<number>();
+  for (const group of diff.change_groups ?? []) {
+    const target = group.kind === "NOISE_SUPPRESSED" ? noise : shown;
+    for (const index of group.raw_change_indices ?? []) {
+      if (Number.isInteger(index) && index >= 0 && index < changeCount) {
+        target.add(index);
+      }
+    }
   }
-  return sameSemanticContentIgnoringArrayIndex(change.old_node, change.new_node);
-}
-
-function sameSemanticContentIgnoringArrayIndex(
-  oldNode: NonNullable<SemanticChange["old_node"]>,
-  newNode: NonNullable<SemanticChange["new_node"]>,
-): boolean {
-  if (oldNode.node_type !== newNode.node_type) {
-    return false;
+  for (const index of shown) {
+    noise.delete(index);
   }
-  if (!sameLabelIgnoringArrayIndex(oldNode.label, newNode.label)) {
-    return false;
-  }
-  const oldChildren = oldNode.children ?? [];
-  const newChildren = newNode.children ?? [];
-  if (oldChildren.length !== newChildren.length) {
-    return false;
-  }
-  return oldChildren.every((oldChild, index) => {
-    const newChild = newChildren[index];
-    return newChild ? sameSemanticContentIgnoringArrayIndex(oldChild, newChild) : false;
-  });
-}
-
-function sameLabelIgnoringArrayIndex(oldLabel: string | undefined, newLabel: string | undefined): boolean {
-  if (oldLabel === newLabel) {
-    return true;
-  }
-  return isArrayIndexLabel(oldLabel) && isArrayIndexLabel(newLabel);
-}
-
-function isArrayIndexLabel(label: string | undefined): boolean {
-  return label !== undefined && /^\[\d+\]$/u.test(label);
+  return noise;
 }
 
 const COMPACT_WRAPPER_LANGUAGES = new Set(["javascript", "typescript", "tsx"]);
