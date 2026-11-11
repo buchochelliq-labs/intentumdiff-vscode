@@ -172,7 +172,7 @@ test("panel diff working cells are directly editable and Apply posts the edited 
     { nonce: "n1", cspSource: "vscode-resource:" },
   );
   // Working-tree cells inside the hunk are contenteditable and tagged with the hunk id.
-  assert.match(html, /class="new-code" contenteditable="true" spellcheck="false" data-hunk-edit-cell data-hunk-id="hunk-\d+"/u);
+  assert.match(html, /class="new-code" contenteditable="plaintext-only" spellcheck="false" data-hunk-edit-cell data-hunk-id="hunk-\d+" data-source="/u);
 
   const dom = new JSDOM(html, { pretendToBeVisual: true, runScripts: "outside-only" });
   const { window } = dom;

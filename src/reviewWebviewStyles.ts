@@ -271,9 +271,9 @@ export function styles(): string {
     .diff-table .hljs-meta,.diff-table .hljs-doctag { color:var(--vscode-charts-blue); }
     .diff-table .hljs-emphasis { font-style:italic; }
     .diff-table .hljs-strong { font-weight:700; }
-    .diff-table code.new-code[contenteditable="true"] { cursor:text; outline:none; }
-    .diff-table code.new-code[contenteditable="true"]:hover { box-shadow:inset 3px 0 0 var(--diff-inserted-strip), inset 0 0 0 1px var(--soft-line); }
-    .diff-table code.new-code[contenteditable="true"]:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:-1px; white-space:pre; background:var(--vscode-editor-background,var(--diff-editor-bg)); }
+    .diff-table code.new-code[data-hunk-edit-cell] { cursor:text; outline:none; }
+    .diff-table code.new-code[data-hunk-edit-cell]:hover { box-shadow:inset 3px 0 0 var(--diff-inserted-strip), inset 0 0 0 1px var(--soft-line); }
+    .diff-table code.new-code[data-hunk-edit-cell]:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:-1px; white-space:pre; background:var(--vscode-editor-background,var(--diff-editor-bg)); }
     .hunk-apply-btn[disabled] { opacity:.45; cursor:default; }
     .hunk-apply-btn.is-dirty { border-color:var(--diff-inserted-strip); color:var(--diff-inserted-strip); }
     .unicode-marker { display:none; margin:0 2px; border:1px solid rgba(247,193,77,.42); border-radius:4px; background:rgba(247,193,77,.13); color:var(--amber); font-size:10px; line-height:1; padding:1px 3px; vertical-align:1px; }
