@@ -296,3 +296,42 @@ test("electron entrypoint disables renderer node integration", () => {
   assert.match(source, /nodeIntegration:\s*false/);
   assert.match(source, /contextIsolation:\s*true/);
 });
+
+test("electron entrypoint registers startup once: one ready event creates one window (#130)", async () => {
+  const Module = require("node:module");
+  const windows = [];
+  const readyCallbacks = [];
+  const electron = {
+    app: {
+      whenReady: () => ({ then: (callback) => { readyCallbacks.push(callback); return Promise.resolve(); } }),
+      on() {},
+    },
+    BrowserWindow: class {
+      constructor(options) { this.options = options; windows.push(this); }
+      loadURL() { return Promise.resolve(); }
+    },
+  };
+  const originalLoad = Module._load;
+  Module._load = function load(request, ...rest) {
+    return request === "electron" ? electron : originalLoad.call(this, request, ...rest);
+  };
+  const entry = require.resolve("../out/main.js");
+  delete require.cache[entry];
+  try {
+    require(entry);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[entry];
+  }
+  assert.equal(readyCallbacks.length, 1, "startup is registered exactly once");
+  await readyCallbacks[0]();
+  assert.equal(windows.length, 1);
+  assert.equal(windows[0].options.webPreferences.nodeIntegration, false);
+});
+
+test("package main points at the compiled CommonJS entrypoint that build emits (#130)", () => {
+  const manifest = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8"));
+  assert.equal(manifest.main, "out/main.js");
+  assert.ok(require("node:fs").existsSync(join(__dirname, "..", manifest.main)), "build:web emits the entrypoint");
+  assert.match(manifest.scripts.start, /build:web/u);
+});

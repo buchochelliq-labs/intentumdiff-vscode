@@ -18,7 +18,12 @@ npm run test      # compiles then runs the node:test suite (260 tests)
 cd review-shell
 npm ci
 npm run test      # builds (tsc) then runs its suite
+npm start         # builds, then launches Electron on the compiled out/main.js
 ```
+
+`package.json` `main` is the compiled CommonJS entrypoint `out/main.js` (what `build:web`
+emits); the shell registers its initial window exactly once on `app.whenReady()`. Open a
+review artifact with `npm start -- --artifact=<path/to/review.json>`.
 
 (Its tsconfig pins `typeRoots` locally so the extension's `@types` don't leak into the nested
 package.)
