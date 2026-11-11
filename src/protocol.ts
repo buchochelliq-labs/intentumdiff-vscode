@@ -62,8 +62,22 @@ export class JsonLineBuffer {
   }
 }
 
+export interface LiveServerClientOptions {
+  /**
+   * Allocate the next request sequence number. Sessions share one monotonic
+   * allocator (see ServerSessionManager) so a replacement session never reuses
+   * a sequence number a retired session may still answer.
+   */
+  allocateSeq?: () => number;
+}
+
 export class LiveServerClient {
   private seq = 0;
+  /** Lowest and highest sequence numbers this client has issued (0 = none yet). */
+  private firstIssuedSeq = 0;
+  private lastIssuedSeq = 0;
+  /** Request kind per issued seq, used to decide whether an error is still owned. */
+  private readonly seqKinds = new Map<number, "diff" | "review" | "asset_diff" | "hello" | "cancel">();
   private readonly pathToSeq = new Map<string, number>();
   private readonly seqToPath = new Map<number, string>();
   private readonly seqToDiffKey = new Map<number, string>();
@@ -73,7 +87,48 @@ export class LiveServerClient {
   private readonly listeners: Array<(event: ClientEvent) => void> = [];
   ready: ReadyMessage | undefined;
 
-  constructor(private readonly transport: LineTransport) {}
+  constructor(
+    private readonly transport: LineTransport,
+    private readonly options: LiveServerClientOptions = {},
+  ) {}
+
+  private nextSeq(kind: "diff" | "review" | "asset_diff" | "hello" | "cancel"): number {
+    const seq = this.options.allocateSeq ? this.options.allocateSeq() : this.seq + 1;
+    this.seq = seq;
+    if (this.firstIssuedSeq === 0) {
+      this.firstIssuedSeq = seq;
+    }
+    this.lastIssuedSeq = seq;
+    this.seqKinds.set(seq, kind);
+    return seq;
+  }
+
+  /**
+   * True when an error for `seq` belongs to a request this client issued that
+   * is no longer the current one for its lane (superseded diff, older review).
+   * Such errors are obsolete and must not reach the host.
+   */
+  private isObsoleteSeq(seq: number): boolean {
+    if (seq <= 0 || this.firstIssuedSeq === 0 || seq > this.lastIssuedSeq) {
+      return false;
+    }
+    if (seq < this.firstIssuedSeq) {
+      // Predates this client: issued by a retired session sharing the allocator.
+      return true;
+    }
+    const kind = this.seqKinds.get(seq);
+    if (kind === "diff") {
+      const diffKey = this.seqToDiffKey.get(seq);
+      return diffKey === undefined || this.pathToSeq.get(diffKey) !== seq;
+    }
+    if (kind === "review") {
+      return this.latestReviewSeq !== seq;
+    }
+    if (kind === "asset_diff") {
+      return !this.seqToAssetPath.has(seq);
+    }
+    return kind === undefined;
+  }
 
   onEvent(listener: (event: ClientEvent) => void): void {
     this.listeners.push(listener);
@@ -82,7 +137,7 @@ export class LiveServerClient {
   diff(path: string, content: string, options: DiffRequestOptions = {}): number {
     const diffKey = diffRequestKey(path, options.purpose);
     const previousSeq = this.pathToSeq.get(diffKey);
-    const nextSeq = ++this.seq;
+    const nextSeq = this.nextSeq("diff");
     if (previousSeq !== undefined) {
       this.send({
         op: "cancel",
@@ -106,11 +161,11 @@ export class LiveServerClient {
   }
 
   hello(): void {
-    this.send({ op: "hello", seq: ++this.seq });
+    this.send({ op: "hello", seq: this.nextSeq("hello") });
   }
 
   review(options: { oldRef?: string; newRef?: string; stream?: boolean } = {}): number {
-    const nextSeq = ++this.seq;
+    const nextSeq = this.nextSeq("review");
     if (this.latestReviewSeq > 0) {
       this.send({ op: "cancel", seq: this.latestReviewSeq });
     }
@@ -132,7 +187,7 @@ export class LiveServerClient {
    * store, and materialising them is the engine's job. The extension never opens an image.
    */
   assetDiff(path: string, options: { ref?: string } = {}): number {
-    const nextSeq = ++this.seq;
+    const nextSeq = this.nextSeq("asset_diff");
     this.seqToAssetPath.set(nextSeq, path);
     this.send({
       op: "asset_diff",
@@ -155,7 +210,7 @@ export class LiveServerClient {
     }
     const seq = this.pathToSeq.get(diffRequestKey(pathOrSeq, "live"))
       ?? this.pathToSeq.get(diffRequestKey(pathOrSeq, "review"))
-      ?? ++this.seq;
+      ?? this.nextSeq("cancel");
     this.send({ op: "cancel", seq, path: pathOrSeq });
   }
 
@@ -197,6 +252,11 @@ export class LiveServerClient {
     const response = parsed as LiveResponse;
     const seq = typeof response.seq === "number" ? response.seq : 0;
     if (response.ok === false || response.error) {
+      if (this.isObsoleteSeq(seq)) {
+        // An obsolete request's error (typically its cancellation) is not the
+        // current request's outcome; ownership is checked before emitting.
+        return;
+      }
       this.emit({
         kind: "error",
         seq,
