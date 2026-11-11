@@ -33,6 +33,8 @@ export interface ServerSession {
   folder: vscode.WorkspaceFolder;
   client: LiveServerClient;
   transport: ProcessLineTransport;
+  /** Monotonic identity of this session within the manager. */
+  generation: number;
 }
 
 export type { LiveServerFailureDetails } from "./config";
@@ -56,8 +58,20 @@ export interface ServerSessionHost {
   onFailure(folder: vscode.WorkspaceFolder, details: LiveServerFailureDetails): Promise<void>;
 }
 
+/**
+ * One monotonic request-sequence allocator for every session this manager
+ * spawns: a replacement session never reuses a seq a retired session issued,
+ * so a delayed answer cannot collide with folder+seq ownership in the host.
+ */
+let sharedSeq = 0;
+function allocateSharedSeq(): number {
+  sharedSeq += 1;
+  return sharedSeq;
+}
+
 export class ServerSessionManager {
   private readonly sessions = new Map<string, ServerSession>();
+  private generation = 0;
 
   constructor(private readonly host: ServerSessionHost) {}
 
@@ -73,7 +87,8 @@ export class ServerSessionManager {
     }
 
     const settings = settingsForFolder(folder);
-    // Rust is the default external runtime. Python is explicit opt-in only.
+    // Engine selection lives in chooseLiveServerLaunch (docs/ARCHITECTURE.md "Topology"):
+    // `auto` uses native only on a verified-release platform (none yet), else Python.
     const rawExecutable = readLiveServerRawExecutable();
     const engine = readLiveServerEngine();
     const bundled = bundledLiveServerPath(this.host.extensionPath);
@@ -91,19 +106,29 @@ export class ServerSessionManager {
     const args = buildLiveServerArgs(folder.uri.fsPath, settings);
     this.host.trace(`spawn [engine=${launch.kind}] ${settings.executable} ${args.join(" ")}`);
     let transport: ProcessLineTransport;
-    const isCurrentSession = () => this.sessions.get(key)?.transport === transport;
+    const generation = ++this.generation;
+    // Every ingress path (stdout lines, protocol events, exit, error) is gated
+    // on this exact session still being current for its folder.
+    const isCurrentSession = () => {
+      const current = this.sessions.get(key);
+      return current?.transport === transport && current.generation === generation;
+    };
     const client = new LiveServerClient({
       writeLine: (line) => {
         this.host.trace(`> ${line}`);
         transport.writeLine(line);
       },
-    });
+    }, { allocateSeq: allocateSharedSeq });
     transport = new ProcessLineTransport(
       settings.executable,
       args,
       this.host.extensionPath,
       {
         onLine: (line) => {
+          if (!isCurrentSession()) {
+            this.host.trace(`< (retired session ${generation}, dropped) ${line}`);
+            return;
+          }
           this.host.trace(`< ${line}`);
           client.handleLine(line);
         },
@@ -132,6 +157,8 @@ export class ServerSessionManager {
       buildLiveServerEnv(settings),
     );
     client.onEvent((event) => {
+      // A restart during dispatch retires this session mid-line; drop the rest.
+      if (!isCurrentSession()) return;
       if (event.kind === "ready") {
         this.host.setStatusText("IntentumDiff: ready");
         if (event.ready.capabilities?.review !== true) {
@@ -176,7 +203,7 @@ export class ServerSessionManager {
       this.host.output.appendLine(`Malformed IntentumDiff protocol line: ${event.message}`);
     });
 
-    const session = { folder, client, transport };
+    const session = { folder, client, transport, generation };
     this.sessions.set(key, session);
     return session;
   }

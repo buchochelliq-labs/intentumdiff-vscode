@@ -30,9 +30,11 @@ import {
 import {
   DEFAULT_DIFF_CONTEXT_LINES,
   buildDiffRows,
+  buildDiffRowsResult,
   diffRows,
   diffStats,
   hunkTextPayload,
+  hunkTextPayloadAt,
   type DiffStats,
 } from "./reviewDiffRows";
 import {
@@ -93,6 +95,13 @@ export interface ReviewWebviewHunkPayload {
   newStartLine?: number;
   newEndLine?: number;
   reviewedNewLines?: string[];
+  /** Zero-length-side anchors and unchanged context (see hunkTextPayloadAt). */
+  oldLinesBefore?: number;
+  newLinesBefore?: number;
+  contextBefore?: string[];
+  contextAfter?: string[];
+  oldMissingFinalNewline?: boolean;
+  newMissingFinalNewline?: boolean;
 }
 export interface ReviewWebviewMessage {
   command: ReviewWebviewCommand;
@@ -225,6 +234,12 @@ export interface ReviewPanelModel {
   oldText: string;
   newText: string;
   diffRows: ReviewDiffRow[];
+  /**
+   * True when the source lines could not be aligned within the textual diff
+   * budget. The rows are then not precise evidence: the panel shows a notice
+   * pointing at the native diff and offers no hunk actions (issue 127).
+   */
+  diffRowsImprecise?: boolean;
   ref: string;
   /** Optional AI-drafted release narrative (BYOK/Copilot). Filled asynchronously. */
   releaseNarrative?: string;
@@ -433,8 +448,11 @@ export function buildReviewPanelModel(
   ref: string,
   options: { contextLines?: number } = {},
 ): ReviewPanelModel {
-  const diffRows = buildDiffRows(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
-  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, diffRows));
+  const alignment = buildDiffRowsResult(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
+  const diffRows = alignment.rows;
+  // Imprecise rows never back per-entry hunk actions.
+  const evidenceRows = alignment.exact ? diffRows : [];
+  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, evidenceRows));
   const semanticPair = file.diff
     ? buildSemanticOnlyDocuments(oldText, newText, file.diff, DEFAULT_SEMANTIC_ONLY_OPTIONS)
     : undefined;
@@ -448,6 +466,7 @@ export function buildReviewPanelModel(
     oldText,
     newText,
     diffRows,
+    ...(alignment.exact ? {} : { diffRowsImprecise: true }),
     ref,
     assetDiff: assetDiffFromMetadata(file.diff?.metadata),
     workingTreeImage: typeof file.diff?.metadata?.working_tree_image === "string"
@@ -513,8 +532,7 @@ function attachSemanticDecorations(
     // When multiple changes are merged into one chunk, use the LAST change's
     // kind. The `changeIndexes` list on the projection is the ground truth
     // for which changes contributed to this projected position.
-    const chunkChangeIndexes = (proj as { changeIndexes?: number[] }).changeIndexes
-      ?? [proj.changeIndex];
+    const chunkChangeIndexes = proj.changeIndexes ?? [proj.changeIndex];
     const lastChangeIdx = chunkChangeIndexes[chunkChangeIndexes.length - 1];
     if (lastChangeIdx === undefined) { continue; }
     const change = changes[lastChangeIdx];
@@ -571,11 +589,29 @@ function denseProjectedLineMap(
   return dense;
 }
 
+/**
+ * Every review-panel message that can change the working tree or the index
+ * (issue 134). The panel is not a diff editor: these are hunk/file-scoped SCM
+ * actions that the HOST performs through verified paths (native Git commands,
+ * `git apply --cached` with context, or a WorkspaceEdit checked byte-for-byte
+ * against the live document). Free-form editing belongs to the native diff
+ * ("Edit in native"). docs/ARCHITECTURE.md lists the same inventory; a test
+ * keeps them in sync.
+ */
+export const REVIEW_WEBVIEW_WRITE_COMMANDS = ["stageFile", "revertFile", "stageHunk", "revertHunk", "editHunk"] as const;
+
+/** Every command the review panel may send; anything else is rejected. */
+export const REVIEW_WEBVIEW_COMMANDS: readonly ReviewWebviewCommand[] = [
+  "openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk",
+  "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes",
+  "exportReleaseNotes", "refresh", "reveal",
+];
+
 export function isReviewWebviewMessage(value: unknown): value is ReviewWebviewMessage {
   if (!isRecord(value)) {
     return false;
   }
-  if (!["openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk", "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes", "exportReleaseNotes", "refresh", "reveal"].includes(String(value.command))) {
+  if (!REVIEW_WEBVIEW_COMMANDS.includes(String(value.command) as ReviewWebviewCommand)) {
     return false;
   }
   if (value.payload === undefined) {
@@ -713,7 +749,9 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
   const totalChanges = counts.added + counts.removed + counts.changed + counts.refactored + counts.moved;
   const rows = model.diffRows ?? [];
   const hasContent = rows.some((row) => row.kind !== "equal");
-  const body = hasContent
+  const body = model.diffRowsImprecise
+    ? `<p class="fallback-notice" role="note">This file's source changes are too large to align line by line here, so no source evidence or hunk actions are shown. Open the native diff for the exact changes.</p>`
+    : hasContent
     ? `<div class="diff-column-heads" aria-hidden="true">
           <span></span><span></span><span>Base &middot; ${escapeHtml(model.ref)}</span>
           <span></span><span></span><span>Working tree</span>
@@ -961,7 +999,7 @@ function entryHunkPayload(entry: ReviewEntry, rows: ReviewDiffRow[]): ReviewWebv
     }
     end += 1;
   }
-  const hunk = hunkTextPayload(rows.slice(start, end));
+  const hunk = hunkTextPayloadAt(rows, start, end);
   return hunk.oldLines.length > 0 || hunk.newLines.length > 0 ? hunk : undefined;
 }
 

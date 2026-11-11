@@ -1,15 +1,18 @@
 # Building intentumdiff-vscode
 
-Toolchain: **Node 20** (see `.nvmrc`). This is not a preference: it is the Node the
-VS Code 1.90 extension host provides, and `engines.vscode: ^1.90.0` promises to
-support that host. CI pins the same version explicitly in the workflows.
+Toolchain policy (one source of truth, matching CI): build and test with **Node 22**
+(`.nvmrc`; every workflow pins `node-version: 22`). That is separate from the **runtime**
+target: the shipped JavaScript must run in the extension host of the oldest supported VS Code
+(`engines.vscode: ^1.90.0`, whose host is Node 20). That target is enforced by
+`@types/node` ^20 in `package.json` and by `npm run lint:min-engine` (no VS Code API newer
+than the engines floor), not by the build Node version.
 
 ## Extension
 
 ```bash
 npm ci
 npm run lint      # tsc -p ./ --noEmit
-npm run test      # compiles then runs the node:test suite (260 tests)
+npm run test      # compiles then runs the node:test suite
 ```
 
 ## Review shell
@@ -18,7 +21,12 @@ npm run test      # compiles then runs the node:test suite (260 tests)
 cd review-shell
 npm ci
 npm run test      # builds (tsc) then runs its suite
+npm start         # builds, then launches Electron on the compiled out/main.js
 ```
+
+`package.json` `main` is the compiled CommonJS entrypoint `out/main.js` (what `build:web`
+emits); the shell registers its initial window exactly once on `app.whenReady()`. Open a
+review artifact with `npm start -- --artifact=<path/to/review.json>`.
 
 (Its tsconfig pins `typeRoots` locally so the extension's `@types` don't leak into the nested
 package.)
@@ -38,7 +46,8 @@ The historical inventory workflow (`release-media-manifest-gate.yml`) checks the
 The current generic VSIX includes the compiled extension and UI assets. It does not
 bundle a Python interpreter, native engine or parser component set. Configure an external
 Rust `intentumdiff-live-server` with matching verified components for real-runtime testing.
-Python transport is an explicit compatibility mode; runtime bundling is separate work.
+With no bundled server, `auto` selects the Python runtime on every platform (see
+`docs/ARCHITECTURE.md` "Topology"); runtime bundling is separate work.
 
 ## Standalone integration runner
 

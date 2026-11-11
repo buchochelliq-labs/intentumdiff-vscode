@@ -2,45 +2,51 @@ import { execFile } from "child_process";
 import * as path from "path";
 import * as vscode from "vscode";
 import {
+  GIT_STATUS_ARGS,
   parseGitStatusPorcelain,
+  parseGitStatusPorcelainZ,
   type ParsedGitStatusEntry,
   type WorkingTreeStatus,
 } from "./gitStatus";
 
-export { parseGitStatusPorcelain, type ParsedGitStatusEntry, type WorkingTreeStatus };
+export { parseGitStatusPorcelain, parseGitStatusPorcelainZ, type ParsedGitStatusEntry, type WorkingTreeStatus };
 
 export interface WorkingTreeFile {
   folder: vscode.WorkspaceFolder;
   uri: vscode.Uri;
   relativePath: string;
   status: WorkingTreeStatus;
+  /** Source path of a rename/copy, when Git reports one. */
+  originalPath?: string;
 }
 
+/** Discovery for every workspace folder; a folder whose Git state is unavailable throws. */
 export async function discoverWorkingTreeFiles(): Promise<WorkingTreeFile[]> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const byKey = new Map<string, WorkingTreeFile>();
   for (const folder of folders) {
-    try {
-      for (const file of await discoverWorkingTreeFilesForFolder(folder)) {
-        byKey.set(file.uri.toString(), file);
-      }
-    } catch {
-      for (const file of await discoverFromGitApi(folder)) {
-        byKey.set(file.uri.toString(), file);
-      }
+    for (const file of await discoverWorkingTreeFilesForFolder(folder)) {
+      byKey.set(file.uri.toString(), file);
     }
   }
   return [...byKey.values()].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
+/**
+ * Working-tree changes for one folder: `git status` first, then the VS Code
+ * Git extension as the documented fallback. A failure is never reported as a
+ * clean repository: if Git fails and the extension cannot answer either, the
+ * Git error propagates (the snapshot is then unavailable, not empty).
+ */
 export async function discoverWorkingTreeFilesForFolder(
   folder: vscode.WorkspaceFolder,
+  deps: { status?: (folder: vscode.WorkspaceFolder) => Promise<WorkingTreeFile[]>; gitApi?: (folder: vscode.WorkspaceFolder) => Promise<WorkingTreeFile[] | undefined> } = {},
 ): Promise<WorkingTreeFile[]> {
   try {
-    return await discoverFromGitStatus(folder);
+    return await (deps.status ?? discoverFromGitStatus)(folder);
   } catch (gitStatusError) {
-    const apiFiles = await discoverFromGitApi(folder);
-    if (apiFiles.length > 0) {
+    const apiFiles = await (deps.gitApi ?? discoverFromGitApi)(folder);
+    if (apiFiles !== undefined) {
       return apiFiles;
     }
     throw gitStatusError;
@@ -59,10 +65,11 @@ export async function resolveGitRef(
   }
 }
 
-async function discoverFromGitApi(folder: vscode.WorkspaceFolder): Promise<WorkingTreeFile[]> {
+/** The Git extension's view, or undefined when it cannot answer (missing, inactive repo, error). */
+async function discoverFromGitApi(folder: vscode.WorkspaceFolder): Promise<WorkingTreeFile[] | undefined> {
   const gitExtension = vscode.extensions.getExtension("vscode.git");
   if (!gitExtension) {
-    return [];
+    return undefined;
   }
   try {
     const extension = gitExtension.isActive ? gitExtension : await gitExtension.activate();
@@ -71,7 +78,7 @@ async function discoverFromGitApi(folder: vscode.WorkspaceFolder): Promise<Worki
       (item: { rootUri?: vscode.Uri }) => item.rootUri?.toString() === folder.uri.toString(),
     );
     if (!repository?.state) {
-      return [];
+      return undefined;
     }
     const resources = [
       ...(repository.state.indexChanges ?? []),
@@ -94,31 +101,33 @@ async function discoverFromGitApi(folder: vscode.WorkspaceFolder): Promise<Worki
       if (!relativePath) {
         continue;
       }
+      const originalPath = item.originalResourceUri?.scheme === "file"
+        ? relativePathFor(folder, item.originalResourceUri)
+        : undefined;
       files.push({
         folder,
         uri,
         relativePath,
         status: statusFromGitResource(item),
+        ...(originalPath && originalPath !== relativePath ? { originalPath } : {}),
       });
     }
     return files;
   } catch {
-    return [];
+    return undefined;
   }
 }
 
 async function discoverFromGitStatus(folder: vscode.WorkspaceFolder): Promise<WorkingTreeFile[]> {
-  try {
-    const output = await execGit(folder.uri.fsPath, ["status", "--porcelain=v1"]);
-    return parseGitStatusPorcelain(output).map((entry) => ({
-      folder,
-      uri: vscode.Uri.file(path.join(folder.uri.fsPath, entry.relativePath)),
-      relativePath: entry.relativePath,
-      status: entry.status,
-    }));
-  } catch {
-    return [];
-  }
+  // Failures propagate so the Git-extension fallback runs (never a false "clean").
+  const output = await execGit(folder.uri.fsPath, [...GIT_STATUS_ARGS]);
+  return parseGitStatusPorcelainZ(output).map((entry) => ({
+    folder,
+    uri: vscode.Uri.file(path.join(folder.uri.fsPath, entry.relativePath)),
+    relativePath: entry.relativePath,
+    status: entry.status,
+    ...(entry.originalPath ? { originalPath: entry.originalPath } : {}),
+  }));
 }
 
 function execGit(cwd: string, args: string[]): Promise<string> {
@@ -126,7 +135,7 @@ function execGit(cwd: string, args: string[]): Promise<string> {
     execFile(
       "git",
       ["-c", `safe.directory=${cwd}`, ...args],
-      { cwd, windowsHide: true },
+      { cwd, windowsHide: true, maxBuffer: 64 * 1024 * 1024, encoding: "utf8" },
       (error, stdout) => {
         if (error) {
           reject(error);

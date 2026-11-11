@@ -29,7 +29,7 @@ import {
   workspaceVenvIntentumDiffCandidates,
   type NativeDiffMode,
 } from "./extensionSettings";
-import { BASE_SCHEME, assertSafeRelativePath, decodeBaseIdentity } from "./baseUri";
+import { BASE_SCHEME, assertSafeRelativePath, baseRelativePathFor, decodeBaseIdentity } from "./baseUri";
 import {
   buildLiveServerArgs,
   buildLiveServerEnv,
@@ -1655,6 +1655,9 @@ class PysdController implements vscode.Disposable {
     this.intentCodeLens.refresh();
     this.intentInlayHints.refresh();
     this.pendingLiveStatus.delete(uri.toString());
+    // An already-open native comparison of this working file against the same
+    // baseline must show this result too, not the diff it was opened with.
+    this.reconcileOpenComparisons(folder.uri.toString(), result.path, diff);
     this.refreshComparisonStatus();
     this.output.appendLine(JSON.stringify({ path: result.path, summary: summarizeDiff(diff) }, null, 2));
   }
@@ -1694,6 +1697,7 @@ class PysdController implements vscode.Disposable {
       const uri = vscode.Uri.file(path.join(folder.uri.fsPath, relativePath));
       this.applyDiffVisuals(uri, normalizedDiff);
     }
+    this.reconcileOpenComparisons(request.folderUri, relativePath, normalizedDiff);
     this.updateReviewTree();
     this.finishReviewIfIdle();
     this.output.appendLine(JSON.stringify({
@@ -1938,7 +1942,10 @@ class PysdController implements vscode.Disposable {
     this.reviewCrossFileEntries = [];
     this.reviewSnapshots.clear();
     if (!options.preserveRefreshState) this.reviewPanelPayload = undefined;
-    this.diffSurfaces.clear();
+    // Keep comparisons whose native tabs are still open; the next live or
+    // review result reconciles them in place instead of orphaning the tab.
+    const openDiffTabs = this.openDiffTabUris();
+    this.diffSurfaces.retainOpen((uri) => openDiffTabs.has(uri));
     this.navigationIndexes.clear();
     this.semanticLineHintCache.clear();
     this.reviewTree.clear();
@@ -2050,10 +2057,11 @@ class PysdController implements vscode.Disposable {
       filePayload.relativePath,
     );
     const ref = readLiveServerSettings().ref;
+    // Renamed/moved files: the base side is the OLD path, the modified side the new one.
     const baseUri = this.baseContentProvider.createUri({
       folderUri: filePayload.folderUri,
       ref,
-      relativePath: filePayload.relativePath,
+      relativePath: baseRelativePathFor(filePayload.relativePath, file.diff),
       cacheNonce: this.reviewSnapshots.get(filePayload.folderUri)?.resolvedCommit,
     });
     const contextLines = readReviewDiffContextLines();
@@ -2221,6 +2229,29 @@ class PysdController implements vscode.Disposable {
     } catch (error) {
       this.output.appendLine(`IntentumDiff: stale base tab cleanup skipped: ${messageOf(error)}`);
     }
+  }
+
+  private reconcileOpenComparisons(folderUri: string, relativePath: string, diff: SemanticDiff): void {
+    const updated = this.diffSurfaces.reconcile(
+      { folderUri, relativePath, baselineRef: readLiveServerSettings().ref },
+      diff,
+    );
+    if (updated > 0) {
+      this.navigationIndexes.clear();
+    }
+  }
+
+  private openDiffTabUris(): Set<string> {
+    const uris = new Set<string>();
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (isTextDiffTabInput(tab.input)) {
+          uris.add(tab.input.original.toString());
+          uris.add(tab.input.modified.toString());
+        }
+      }
+    }
+    return uris;
   }
 
   /** Resolve the intent-lens context for a diff document URI (base or modified). */
@@ -2427,6 +2458,7 @@ class PysdController implements vscode.Disposable {
       diff: result.fileDiff,
     };
     this.reviewFiles.set(reviewKey(folderUri, relativePath), reviewFile);
+    this.reconcileOpenComparisons(folderUri, relativePath, result.fileDiff);
     let streamed = this.streamedReviewFiles.get(folderUri);
     if (!streamed) {
       streamed = new Set();
@@ -2642,6 +2674,7 @@ class PysdController implements vscode.Disposable {
         status: "ready",
         diff,
       });
+      this.reconcileOpenComparisons(folderUri, relativePath, diff);
       if (!streamed?.has(relativePath)) {
         this.telemetry.recordFuelTelemetry(folderUri, relativePath, diff);
       }
@@ -2799,7 +2832,7 @@ class PysdController implements vscode.Disposable {
   private applyDecorations(editor: vscode.TextEditor, decorations: DecorationLike[]): void {
     const byKind = new Map<DecorationLike["kind"], vscode.DecorationOptions[]>();
     for (const decoration of decorations) {
-      const options = toDecorationOption(decoration);
+      const options = toDecorationOption(decoration, editor.document);
       if (decoration.kind === "inlineDeletionWord") {
         options.range = wordRangeForInlineDeletion(editor, options.range);
       }
@@ -2897,7 +2930,10 @@ class PysdController implements vscode.Disposable {
       this.setDecorationsForUri(uri, []);
       return;
     }
-    this.diagnostics.set(uri, this.overlaysVisible ? diffToDiagnostics(diff).map(toVsDiagnostic) : []);
+    this.diagnostics.set(uri, this.overlaysVisible ? diffToDiagnostics(diff).map((diagnostic) => toVsDiagnostic(
+      diagnostic,
+      vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString()),
+    )) : []);
     this.setDecorationsForUri(uri, diffToModifiedDecorations(diff));
   }
 

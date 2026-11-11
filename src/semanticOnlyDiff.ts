@@ -102,6 +102,8 @@ export interface SemanticOnlyChangeProjection {
    */
   baseWindowEnd?: number;
   modifiedWindowEnd?: number;
+  /** Raw change indexes merged into the same chunk (in chunk order). */
+  changeIndexes?: number[];
 }
 
 export interface ProjectedRange {
@@ -167,7 +169,7 @@ export function buildSemanticOnlyDocuments(
   // For each chunk, compute the 1-based projected line of the last line in
   // its window on each side. The webview uses this to attach the LATER
   // chunk's kind to the gap that sits immediately after the chunk.
-  const windowEnds = computeWindowEnds(chunks, base.originalLineMap, modified.originalLineMap);
+  const windowEnds = computeWindowEnds(chunks, base.lineMap, modified.lineMap);
 
   const projection: SemanticOnlyProjection = {
     baseLineMap: base.lineMap,
@@ -178,8 +180,9 @@ export function buildSemanticOnlyDocuments(
       changeIndex: index,
       base: projectPosition(change.old_node?.position ?? undefined, base.lineMap),
       modified: projectPosition(change.new_node?.position ?? undefined, modified.lineMap),
-      baseWindowEnd: windowEnds[index]?.baseWindowEnd,
-      modifiedWindowEnd: windowEnds[index]?.modifiedWindowEnd,
+      baseWindowEnd: windowEnds.get(index)?.baseWindowEnd,
+      modifiedWindowEnd: windowEnds.get(index)?.modifiedWindowEnd,
+      changeIndexes: windowEnds.get(index)?.changeIndexes,
     })),
     selectedChangeIndexes: selected.map((item) => item.index),
   };
@@ -504,25 +507,34 @@ function splitLines(text: string): string[] {
 }
 
 /**
- * For each chunk, compute the 1-based projected line of the LAST line in its
- * window (the projected end of the last context line). Returns a list
- * indexed in chunk order (parallel to the `chunks` array). The caller pairs
- * this with the `selected` list, but since chunk indices and change indices
- * are 1:1, we return by change index.
+ * For each chunk, the 1-based projected line of the LAST line in its window
+ * on each side, keyed by every raw change index merged into that chunk.
+ *
+ * Coordinate spaces (issue 129): a chunk's ranges are ORIGINAL 0-based lines,
+ * so they are looked up in the original→projected `lineMap`s (never the
+ * projected→original maps). Index spaces: chunks are not 1:1 with changes —
+ * merged chunks hold several changes and filtered changes hold none — so the
+ * result is keyed by raw change index, not chunk position.
  */
 function computeWindowEnds(
   chunks: PendingChunk[],
-  baseOriginalLineMap: Map<number, number>,
-  modifiedOriginalLineMap: Map<number, number>,
-): { baseWindowEnd: number | undefined; modifiedWindowEnd: number | undefined }[] {
-  return chunks.map((chunk) => {
-    const baseEnd = chunk.oldRange ? baseOriginalLineMap.get(chunk.oldRange.end) : undefined;
-    const modEnd  = chunk.newRange ? modifiedOriginalLineMap.get(chunk.newRange.end) : undefined;
-    return {
-      baseWindowEnd: baseEnd != null ? baseEnd + 1 : undefined,
-      modifiedWindowEnd: modEnd != null ? modEnd + 1 : undefined,
+  baseLineMap: Map<number, number>,
+  modifiedLineMap: Map<number, number>,
+): Map<number, { baseWindowEnd: number | undefined; modifiedWindowEnd: number | undefined; changeIndexes: number[] }> {
+  const byChange = new Map<number, { baseWindowEnd: number | undefined; modifiedWindowEnd: number | undefined; changeIndexes: number[] }>();
+  for (const chunk of chunks) {
+    const baseEnd = chunk.oldRange ? baseLineMap.get(chunk.oldRange.end) : undefined;
+    const modEnd = chunk.newRange ? modifiedLineMap.get(chunk.newRange.end) : undefined;
+    const ends = {
+      baseWindowEnd: baseEnd !== undefined ? baseEnd + 1 : undefined,
+      modifiedWindowEnd: modEnd !== undefined ? modEnd + 1 : undefined,
+      changeIndexes: [...chunk.changeIndexes],
     };
-  });
+    for (const changeIndex of chunk.changeIndexes) {
+      byChange.set(changeIndex, ends);
+    }
+  }
+  return byChange;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { EmptyContentProvider } from "./emptyContentProvider";
 import { reviewTargetForChange } from "./mapper";
 import type { OpenReviewPayload, ReviewTreeNode } from "./reviewTree";
+import { engineRangeToUtf16, rangeBounds, type TextDocumentLike } from "./selectionRange";
 import type { DecorationLike, DiagnosticLike, SemanticDiff } from "./types";
 
 export function isTextDiffTabInput(value: unknown): value is { original: vscode.Uri; modified: vscode.Uri } {
@@ -173,9 +174,9 @@ export function semanticLineHintDecorations(
     }));
 }
 
-export function toVsDiagnostic(diagnostic: DiagnosticLike): vscode.Diagnostic {
+export function toVsDiagnostic(diagnostic: DiagnosticLike, document?: TextDocumentLike): vscode.Diagnostic {
   const result = new vscode.Diagnostic(
-    toRange(diagnostic.position),
+    toEngineRange(diagnostic.position, document),
     diagnostic.message,
     toSeverity(diagnostic.severity),
   );
@@ -194,9 +195,9 @@ export function toSeverity(severity: DiagnosticLike["severity"]): vscode.Diagnos
   return vscode.DiagnosticSeverity.Information;
 }
 
-export function toDecorationOption(decoration: DecorationLike): vscode.DecorationOptions {
+export function toDecorationOption(decoration: DecorationLike, document?: TextDocumentLike): vscode.DecorationOptions {
   const option: vscode.DecorationOptions = {
-    range: toRange(decoration.position),
+    range: toEngineRange(decoration.position, document),
     hoverMessage: decoration.message,
   };
   if (decoration.kind === "inlineDeletionGap" && decoration.deletedText) {
@@ -209,20 +210,32 @@ export function toDecorationOption(decoration: DecorationLike): vscode.Decoratio
   return option;
 }
 
+/**
+ * VS Code range from a position that is ALREADY in UTF-16 columns (e.g. the
+ * output of `selectionTargetForDocument`). The end column is held >= the start
+ * column only when both bounds are on the same line.
+ */
 export function toRange(position: DiagnosticLike["position"]): vscode.Range {
   if (!position) {
     return new vscode.Range(0, 0, 0, 1);
   }
-  const startLine = Math.max(position.start_line, 0);
-  const endLine = Math.max(position.end_line, startLine);
-  const startCol = Math.max(position.start_col, 0);
-  const endCol = Math.max(position.end_col, startCol);
-  return new vscode.Range(
-    startLine,
-    startCol,
-    endLine,
-    endCol,
-  );
+  const [startLine, startCol, endLine, endCol] = rangeBounds(position);
+  return new vscode.Range(startLine, startCol, endLine, endCol);
+}
+
+/**
+ * VS Code range from an **engine** position (UTF-8 byte columns), converted
+ * against the exact text of the document it addresses. Without a document the
+ * columns cannot be converted and are used as-is (ASCII-equivalent).
+ */
+export function toEngineRange(
+  position: DiagnosticLike["position"],
+  document?: TextDocumentLike,
+): vscode.Range {
+  if (!position || !document) {
+    return toRange(position);
+  }
+  return toRange(engineRangeToUtf16(position, document).position);
 }
 
 export function wordRangeForInlineDeletion(editor: vscode.TextEditor, range: vscode.Range): vscode.Range {

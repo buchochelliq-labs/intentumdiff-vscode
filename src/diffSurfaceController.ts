@@ -4,7 +4,7 @@
 // refresh. Review state, visuals, and editor-context flags stay host-side.
 import * as path from "path";
 import * as vscode from "vscode";
-import { assertSafeRelativePath } from "./baseUri";
+import { assertSafeRelativePath, baseRelativePathFor } from "./baseUri";
 import type { BaseContentProvider } from "./baseContentProvider";
 import type { EmptyContentProvider } from "./emptyContentProvider";
 import {
@@ -41,6 +41,14 @@ export interface OpenedDiffContext {
   baseUri: vscode.Uri;
   modifiedUri: vscode.Uri;
   diff?: SemanticDiff;
+  /**
+   * Comparison identity: the Git baseline the left side was opened against,
+   * and whether the right side is the live working tree. Only a working-tree
+   * comparison against the same baseline is reconciled with fresh engine
+   * results; any other comparison is an intentionally immutable snapshot.
+   */
+  baselineRef: string;
+  tracksWorkingTree: boolean;
   semanticSessionId?: string;
   semanticSourceBaseUri?: vscode.Uri;
   semanticSourceModifiedUri?: vscode.Uri;
@@ -63,6 +71,23 @@ export interface DiffSurfaceHost {
   setSemanticLineHintsForUri(uri: vscode.Uri, options: vscode.DecorationOptions[]): void;
   /** Editor context keys + lens/inlay refresh after the context map changes. */
   onContextsChanged(): void;
+}
+
+export interface ComparisonResultIdentity {
+  folderUri: string;
+  relativePath: string;
+  baselineRef: string;
+}
+
+/** True when a fresh engine result for `result` describes this open comparison. */
+export function comparisonTracksResult(
+  context: Pick<OpenedDiffContext, "folderUri" | "relativePath" | "baselineRef" | "tracksWorkingTree">,
+  result: ComparisonResultIdentity,
+): boolean {
+  return context.tracksWorkingTree
+    && context.folderUri === result.folderUri
+    && context.relativePath === result.relativePath
+    && context.baselineRef === result.baselineRef;
 }
 
 export class DiffSurfaceController {
@@ -94,6 +119,47 @@ export class DiffSurfaceController {
 
   clear(): void {
     this.openDiffContexts.clear();
+  }
+
+  /**
+   * Full-refresh reconciliation: drop contexts whose editors are closed and
+   * keep the open ones so the next engine result can update them in place.
+   */
+  retainOpen(isOpen: (uriString: string) => boolean): void {
+    for (const context of this.uniqueContexts()) {
+      if (!isOpen(context.baseUri.toString()) && !isOpen(context.modifiedUri.toString())) {
+        this.openDiffContexts.delete(context.baseUri.toString());
+        this.openDiffContexts.delete(context.modifiedUri.toString());
+      }
+    }
+    this.host.onContextsChanged();
+  }
+
+  /**
+   * Update every open working-tree comparison of `result` with a fresh engine
+   * diff, so CodeLens, status, navigation and the semantic-only projection
+   * all read the same current result. Returns the number of comparisons
+   * updated; unrelated comparisons are left untouched.
+   */
+  reconcile(result: ComparisonResultIdentity, diff: SemanticDiff): number {
+    const updated = this.uniqueContexts().filter((context) => comparisonTracksResult(context, result));
+    for (const context of updated) {
+      context.diff = diff;
+      if (context.mode === "full") {
+        this.host.applyDiffVisuals(context.modifiedUri, diff);
+        this.host.applyBaseDiffVisuals(context.baseUri, diff);
+      } else {
+        void this.refreshSemanticOnlyContext(context, readSemanticOnlyOptions(this.host.hideComments()));
+      }
+    }
+    if (updated.length > 0) {
+      this.host.onContextsChanged();
+    }
+    return updated.length;
+  }
+
+  private uniqueContexts(): OpenedDiffContext[] {
+    return [...new Set(this.openDiffContexts.values())];
   }
 
   async open(
@@ -143,13 +209,18 @@ export class DiffSurfaceController {
       filePayload.relativePath,
     );
     const ref = readLiveServerSettings().ref;
+    // Renamed/moved files: the base side is the OLD path, the modified side the new one.
     const baseUri = this.host.baseContentProvider.createUri({
       folderUri: filePayload.folderUri,
       ref,
-      relativePath: filePayload.relativePath,
+      relativePath: baseRelativePathFor(filePayload.relativePath, file?.diff),
       cacheNonce: this.host.resolvedCommitFor(filePayload.folderUri),
     });
-    const title = `${filePayload.relativePath} (IntentumDiff: ${ref} ↔ working tree)`;
+    const basePath = baseRelativePathFor(filePayload.relativePath, file?.diff);
+    const label = basePath === filePayload.relativePath
+      ? filePayload.relativePath
+      : `${basePath} → ${filePayload.relativePath}`;
+    const title = `${label} (IntentumDiff: ${ref} ↔ working tree)`;
     const mode = modeOverride ?? readDiffMode();
     if (mode === "semanticOnly" && file?.diff) {
       await this.openSemanticOnlyNativeDiff(filePayload, file.diff, baseUri, modifiedUri, ref);
@@ -180,6 +251,8 @@ export class DiffSurfaceController {
       baseUri,
       modifiedUri,
       diff,
+      baselineRef: ref,
+      tracksWorkingTree: true,
     });
     if (diff) {
       this.host.applyDiffVisuals(modifiedUri, diff);
@@ -231,6 +304,8 @@ export class DiffSurfaceController {
       baseUri: semanticDocs.baseUri,
       modifiedUri: semanticDocs.modifiedUri,
       diff,
+      baselineRef: ref,
+      tracksWorkingTree: true,
       semanticSessionId: semanticDocs.id,
       semanticSourceBaseUri: baseUri,
       semanticSourceModifiedUri: modifiedUri,
@@ -347,35 +422,47 @@ export class DiffSurfaceController {
     }
     const options = readSemanticOnlyOptions(this.host.hideComments());
     for (const context of contexts) {
-      if (
-        !context.diff
-        || !context.semanticSessionId
-        || !context.semanticSourceBaseUri
-        || !context.semanticSourceModifiedUri
-      ) {
-        continue;
-      }
-      const [baseDocument, modifiedDocument] = await Promise.all([
-        vscode.workspace.openTextDocument(context.semanticSourceBaseUri),
-        vscode.workspace.openTextDocument(context.semanticSourceModifiedUri),
-      ]);
-      const projection = this.host.semanticOnlyContentProvider.updateDocuments(context.semanticSessionId, {
-        folderUri: context.folderUri,
-        relativePath: context.relativePath,
-        oldText: baseDocument.getText(),
-        newText: modifiedDocument.getText(),
-        diff: context.diff,
-        options,
-      });
-      if (!projection) {
-        continue;
-      }
-      context.semanticProjection = projection;
-      this.applySemanticOnlyVisuals(context);
-      if (context.lastRevealPayload) {
-        await delay(25);
-        await this.reveal(context, context.lastRevealPayload);
-      }
+      await this.refreshSemanticOnlyContext(context, options);
+    }
+  }
+
+  private async refreshSemanticOnlyContext(
+    context: OpenedDiffContext,
+    options: ReturnType<typeof readSemanticOnlyOptions>,
+  ): Promise<void> {
+    if (
+      !context.diff
+      || !context.semanticSessionId
+      || !context.semanticSourceBaseUri
+      || !context.semanticSourceModifiedUri
+    ) {
+      return;
+    }
+    const diff = context.diff;
+    const [baseDocument, modifiedDocument] = await Promise.all([
+      vscode.workspace.openTextDocument(context.semanticSourceBaseUri),
+      vscode.workspace.openTextDocument(context.semanticSourceModifiedUri),
+    ]);
+    if (context.diff !== diff) {
+      // A newer result reconciled this comparison while documents loaded.
+      return;
+    }
+    const projection = this.host.semanticOnlyContentProvider.updateDocuments(context.semanticSessionId, {
+      folderUri: context.folderUri,
+      relativePath: context.relativePath,
+      oldText: baseDocument.getText(),
+      newText: modifiedDocument.getText(),
+      diff,
+      options,
+    });
+    if (!projection) {
+      return;
+    }
+    context.semanticProjection = projection;
+    this.applySemanticOnlyVisuals(context);
+    if (context.lastRevealPayload) {
+      await delay(25);
+      await this.reveal(context, context.lastRevealPayload);
     }
   }
 

@@ -90,7 +90,9 @@ export function buildReleaseNotes(diff: SemanticDiff | undefined): ReleaseNotes 
       behavior.push(trimmed);
     } else if (risk === "internal") {
       internal.push(trimmed);
-    } else if (risk === "content") {
+    } else {
+      // "content", or no derived risk (an unclassified change): never dropped,
+      // never promoted to a behavior claim.
       other.push(trimmed);
     }
   };
