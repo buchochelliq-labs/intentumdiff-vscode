@@ -2799,7 +2799,7 @@ class PysdController implements vscode.Disposable {
   private applyDecorations(editor: vscode.TextEditor, decorations: DecorationLike[]): void {
     const byKind = new Map<DecorationLike["kind"], vscode.DecorationOptions[]>();
     for (const decoration of decorations) {
-      const options = toDecorationOption(decoration);
+      const options = toDecorationOption(decoration, editor.document);
       if (decoration.kind === "inlineDeletionWord") {
         options.range = wordRangeForInlineDeletion(editor, options.range);
       }
@@ -2897,7 +2897,10 @@ class PysdController implements vscode.Disposable {
       this.setDecorationsForUri(uri, []);
       return;
     }
-    this.diagnostics.set(uri, this.overlaysVisible ? diffToDiagnostics(diff).map(toVsDiagnostic) : []);
+    this.diagnostics.set(uri, this.overlaysVisible ? diffToDiagnostics(diff).map((diagnostic) => toVsDiagnostic(
+      diagnostic,
+      vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString()),
+    )) : []);
     this.setDecorationsForUri(uri, diffToModifiedDecorations(diff));
   }
 

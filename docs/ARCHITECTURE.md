@@ -31,6 +31,13 @@ Deep-dive on the diff viewer: [architecture/diff-viewer.md](architecture/diff-vi
   hex, no bundled fonts; must read natively in Dark+, Light+, High-Contrast. Codicons only.
 - **Privacy/BYOK**: no bundled keys; keys in SecretStorage; cloud consent precedes any send;
   default payloads are privacy-safe fact sheets (never raw source to a cloud endpoint).
+- **Engine positions**: `start_line`/`end_line` are 0-based lines and `start_col`/`end_col`
+  are 0-based **UTF-8 byte offsets within the line** (tree-sitter columns). VS Code columns are
+  UTF-16 code units, so every engine position is converted against the exact source of the side
+  it addresses (`selectionRange.engineRangeToUtf16`) before it becomes a selection, decoration
+  or diagnostic range. Each bound converts on its own line (a multiline end column is never
+  widened by the start column); malformed, out-of-document or code-point-splitting bounds are
+  reported inexact and are revealed without a selection rather than invented.
 - The extension keeps a long-running engine process — after an engine/component rebuild,
   restart it (Reload Window) before re-diagnosing "stale" behavior.
 
