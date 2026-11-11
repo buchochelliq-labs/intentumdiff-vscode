@@ -45,6 +45,24 @@ Deep-dive on the diff viewer: [architecture/diff-viewer.md](architecture/diff-vi
 - The extension keeps a long-running engine process — after an engine/component rebuild,
   restart it (Reload Window) before re-diagnosing "stale" behavior.
 
+## Responsibility map (engine vs presentation)
+
+The extension is a thin client: it renders what the engine states and never makes a
+source-derived semantic claim of its own (#131, #133).
+
+| Fact | Owner | Extension behaviour |
+|---|---|---|
+| `change_type`, `refactoring_kind`, node positions/facts | Engine (authoritative) | Rendered as given. |
+| `change_groups[].kind` (Meaningful / Refactoring / Moved / Style / Noise) | Engine (authoritative) | Label, icon, colour only. Style/noise hidden from lenses because the engine said so. |
+| Display bucket of an **ungrouped** change (`kindForChange`) | Presentation | Fixed 1:1 rendering of the engine enums above (ADDITION/DELETION/MODIFICATION → Meaningful, MOVE/REORDER → Moved, REFACTORING or `refactoring_kind` → Refactoring, STYLE_ONLY → Style). Any other or missing `change_type` is **Unclassified**: shown, with no risk. |
+| Risk badge (Behavior / Internal / Content) | Presentation, derived | Derived only from the engine kind above plus the content class; an unknown kind has no risk and lands in release-notes "Other", never "Behavior". |
+| Content class (code / docs / config / data / text) | Presentation heuristic today | `contentClass.ts` uses the engine's `language`, `metadata.content_type.category` and node types to choose wording and to say "Content" instead of "Behavior" on non-code files. It must only *soften* claims, never add one. |
+| Noise / style disposition, guardrails, asset artifacts | Engine (authoritative) | Never decided on the host. |
+
+Open engine-schema gap: the content class and a per-group risk/impact are not engine fields
+yet. When Core emits them (proposed: `SemanticDiff.content_class` and `ChangeGroup.impact`),
+the extension should render them in place of the heuristic and the derived badge.
+
 `review-shell/` is the shared review-rendering package (also used by the desktop shell);
 `release-media/` holds the validated visual-proof set gated by
 `.github/workflows/release-media-manifest-gate.yml`.

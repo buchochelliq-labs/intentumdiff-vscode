@@ -91,3 +91,36 @@ test("no host tree comparison classifies changes as presentation noise", () => {
     assert.doesNotMatch(source, /isPresentationNoiseChange|sameSemanticContentIgnoringArrayIndex|isArrayIndexLabel/u, file);
   }
 });
+
+// #133: ungrouped categories are a fixed rendering of engine enums; unknown stays unknown.
+import { buildIntentLenses, describeKind, kindForChange, riskForContent } from "../src/intentCodeLens";
+import { buildReleaseNotes } from "../src/releaseNotes";
+
+test("ungrouped change categories map engine change_type 1:1 and never invent meaning (#133)", () => {
+  assert.equal(kindForChange({ change_type: "ADDITION" }), "MEANINGFUL_CHANGE");
+  assert.equal(kindForChange({ change_type: "DELETION" }), "MEANINGFUL_CHANGE");
+  assert.equal(kindForChange({ change_type: "MODIFICATION" }), "MEANINGFUL_CHANGE");
+  assert.equal(kindForChange({ change_type: "MOVE" }), "MOVED_CODE");
+  assert.equal(kindForChange({ change_type: "MODIFICATION", refactoring_kind: "RENAME" }), "REFACTORING");
+  for (const unknown of ["", "SOMETHING_NEW", "modify"]) {
+    assert.equal(kindForChange({ change_type: unknown }), "UNCLASSIFIED", JSON.stringify(unknown));
+  }
+  assert.equal(describeKind("UNCLASSIFIED")?.risk, undefined, "no derived risk for missing engine evidence");
+  assert.equal(riskForContent("UNCLASSIFIED", "code"), undefined);
+  assert.equal(riskForContent("UNCLASSIFIED", "docs"), undefined);
+});
+
+test("an unclassified ungrouped change is shown and noted, but never as a behavior claim (#133)", () => {
+  const diff: SemanticDiff = {
+    language: "python",
+    changes: [{ change_type: "FUTURE_KIND", description: "Engine-specific change", new_node: { node_type: "function_definition", label: "f", position: at(1) } }],
+    change_groups: [],
+  };
+  const lenses = buildIntentLenses(diff, "modified");
+  assert.equal(lenses.length, 1);
+  assert.equal(lenses[0].category.label, "Unclassified");
+  assert.equal(lenses[0].category.risk, undefined);
+  const notes = buildReleaseNotes(diff);
+  assert.deepEqual(notes.behavior, []);
+  assert.equal(notes.other.length, 1);
+});
