@@ -19,6 +19,10 @@ async function main(): Promise<void> {
   if (!["python", "native"].includes(runtimeKind)) throw new Error("Unknown runtime kind");
   const captureSet = process.env.INTENTUMDIFF_CAPTURE_SET ?? "capabilities";
   if (!/^(capabilities|languages-[0-3])$/u.test(captureSet)) throw new Error("Unknown capture set");
+  // The supported-runtime matrix runs the current stable pin and the minimum
+  // VS Code the manifest claims (engines.vscode); see real-runtime.yml.
+  const vscodeVersion = process.env.INTENTUMDIFF_TEST_VSCODE_VERSION ?? "1.138.0";
+  if (!/^\d+\.\d+\.\d+$/u.test(vscodeVersion)) throw new Error("INTENTUMDIFF_TEST_VSCODE_VERSION must be an exact x.y.z version");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "intentumdiff-real-"));
   const user = path.join(temp, "profile"), extensions = path.join(temp, "extensions");
   const workspace = path.join(temp, "workspace");
@@ -46,7 +50,7 @@ async function main(): Promise<void> {
     "workbench.secondarySideBar.defaultVisibility": "hidden",
     "workbench.startupEditor": "none", "security.workspace.trust.enabled": false,
   }));
-  const executable = await downloadAndUnzipVSCode({ version: "1.138.0" });
+  const executable = await downloadAndUnzipVSCode({ version: vscodeVersion });
   const [command, ...args] = resolveCliArgsFromVSCodeExecutablePath(executable);
   execFileSync(command, [...args, "--user-data-dir", user, "--extensions-dir", extensions,
     "--install-extension", vsix, "--force"], { encoding: "utf8", timeout: 120000 });
@@ -58,7 +62,7 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(evidence, "provenance.json"), JSON.stringify({
     vsix_sha256: createHash("sha256").update(fs.readFileSync(vsix)).digest("hex"),
     extension_version: JSON.parse(fs.readFileSync(path.join(installed, "package.json"), "utf8")).version,
-    extension_commit: process.env.GITHUB_SHA ?? "local", vscode_version: "1.138.0",
+    extension_commit: process.env.GITHUB_SHA ?? "local", vscode_version: vscodeVersion,
     runtime_kind: runtimeKind,
     runtime_launch: runtimeKind === "native" ? "default engine and PATH" : "explicit Python compatibility",
     runtime_executable_sha256: createHash("sha256").update(fs.readFileSync(cli)).digest("hex"),

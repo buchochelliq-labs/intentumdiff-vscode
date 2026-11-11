@@ -172,7 +172,7 @@ test("panel diff working cells are directly editable and Apply posts the edited 
     { nonce: "n1", cspSource: "vscode-resource:" },
   );
   // Working-tree cells inside the hunk are contenteditable and tagged with the hunk id.
-  assert.match(html, /class="new-code" contenteditable="true" spellcheck="false" data-hunk-edit-cell data-hunk-id="hunk-\d+"/u);
+  assert.match(html, /class="new-code" contenteditable="plaintext-only" spellcheck="false" data-hunk-edit-cell data-hunk-id="hunk-\d+" data-source="/u);
 
   const dom = new JSDOM(html, { pretendToBeVisual: true, runScripts: "outside-only" });
   const { window } = dom;
@@ -791,7 +791,9 @@ test("rendered webviews escape labels and source text and include a nonce CSP", 
   assert.match(panelHtml, /class="entry-actions" aria-label="Semantic entity actions"/u);
   assert.match(panelHtml, />Stage<\/span><\/button>/u);
   assert.match(panelHtml, />Revert<\/span><\/button>/u);
-  assert.match(panelHtml, />Apply<\/span><\/button>/u);
+  // The entity "Apply" is a non-mutating preview (issue 119).
+  assert.match(panelHtml, /data-command="previewHunk"[^>]*title="Preview"/u);
+  assert.doesNotMatch(panelHtml, /data-command="applyHunk"/u);
   assert.match(panelHtml, /command === "editHunk"/u);
   assert.match(panelHtml, /payload\.hunk\.newLines = editedLines/u);
   assert.match(panelHtml, /commandButton && commandButton\.getAttribute\("data-command"\) !== "reveal"/u);

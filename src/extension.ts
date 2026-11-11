@@ -59,6 +59,7 @@ import {
   releaseNotesToMarkdown,
 } from "./releaseNotes";
 import {
+  planVerifiedHunkTextEdit,
   reviewActionTargetForPayload,
   semanticReviewHunkEditForPayload,
   semanticReviewActionTargetForPayload,
@@ -631,6 +632,10 @@ class PysdController implements vscode.Disposable {
         async (payload?: ReviewWebviewPayload) => this.handleSemanticHunkAction("applyHunk", payload),
       ),
       vscode.commands.registerCommand(
+        "intentumdiff.reviewPanel.previewHunk",
+        async (payload?: ReviewWebviewPayload) => this.handleSemanticHunkAction("applyHunk", payload, "preview"),
+      ),
+      vscode.commands.registerCommand(
         "intentumdiff.reviewPanel.previousChange",
         () => this.reviewPanelController?.postPanelCommand("previousChange"),
       ),
@@ -913,8 +918,14 @@ class PysdController implements vscode.Disposable {
       await vscode.commands.executeCommand("intentumdiff.reviewPanel.revertFile", message.payload);
       return;
     }
-    if (message.command === "stageHunk" || message.command === "revertHunk" || message.command === "applyHunk") {
+    if (message.command === "stageHunk" || message.command === "revertHunk") {
       await vscode.commands.executeCommand(`intentumdiff.reviewPanel.${message.command}`, message.payload);
+      return;
+    }
+    // "Preview apply" (and any bare applyHunk message) must never write: it only
+    // shows the patch. Writing inline edits is the explicit "Apply edits" path.
+    if (message.command === "previewHunk" || message.command === "applyHunk") {
+      await vscode.commands.executeCommand("intentumdiff.reviewPanel.previewHunk", message.payload);
       return;
     }
     if (message.command === "editHunk") {
@@ -1005,11 +1016,16 @@ class PysdController implements vscode.Disposable {
   private async handleSemanticHunkAction(
     kind: SemanticReviewActionKind,
     payload: ReviewWebviewPayload | undefined,
+    mode: "write" | "preview" = "write",
   ): Promise<void> {
     const editResult = semanticReviewHunkEditForPayload(
       { ...payload, actionKind: kind },
       (folderUri) => vscode.Uri.parse(folderUri).fsPath,
     );
+    if (mode === "preview") {
+      await this.previewSemanticHunkEdit(kind, payload, editResult.edit, editResult.error);
+      return;
+    }
     if (editResult.edit && (kind === "applyHunk" || kind === "revertHunk")) {
       await this.applySemanticHunkEdit(kind, editResult.edit);
       return;
@@ -1065,12 +1081,41 @@ class PysdController implements vscode.Disposable {
     }
     const uri = vscode.Uri.file(hunkEdit.target.fsPath);
     const document = await vscode.workspace.openTextDocument(uri);
-    const startLine = Math.max(0, Math.min(document.lineCount, hunkEdit.editStartLine - 1));
-    const endLineExclusive = Math.max(startLine, Math.min(document.lineCount, hunkEdit.editEndLine));
-    const range = new vscode.Range(startLine, 0, endLineExclusive, 0);
-    const replacementText = hunkEdit.replacementText.length > 0 ? `${hunkEdit.replacementText}\n` : "";
+    // Verify against the live document immediately before writing: the hunk is
+    // stale if the reviewed working lines are no longer there byte-for-byte
+    // (concurrent edit, refresh-before-click, replayed message).
+    const lines: string[] = [];
+    for (let index = 0; index < document.lineCount; index += 1) {
+      lines.push(document.lineAt(index).text);
+    }
+    const plan = planVerifiedHunkTextEdit(
+      { lines, eol: document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n" },
+      hunkEdit,
+    );
+    if (!plan.edit) {
+      this.output.appendLine(JSON.stringify({
+        semanticHunkActionRejected: {
+          kind,
+          file: hunkEdit.target.fsPath,
+          editStartLine: hunkEdit.editStartLine,
+          editEndLine: hunkEdit.editEndLine,
+          documentVersion: document.version,
+          reason: plan.error,
+        },
+      }, null, 2));
+      void vscode.window.showWarningMessage(`IntentumDiff: ${hunkEdit.target.previewLabel} was not applied: ${plan.error}`);
+      this.requestFullReview("stale semantic hunk action");
+      return;
+    }
+    const wasDirty = document.isDirty;
+    const range = new vscode.Range(
+      plan.edit.startLine,
+      plan.edit.startCharacter,
+      plan.edit.endLine,
+      plan.edit.endCharacter,
+    );
     const edit = new vscode.WorkspaceEdit();
-    edit.replace(uri, range, replacementText);
+    edit.replace(uri, range, plan.edit.text);
     const applied = await vscode.workspace.applyEdit(edit);
     this.output.appendLine(JSON.stringify({
       semanticHunkActionApplied: {
@@ -1078,16 +1123,74 @@ class PysdController implements vscode.Disposable {
         file: hunkEdit.target.fsPath,
         editStartLine: hunkEdit.editStartLine,
         editEndLine: hunkEdit.editEndLine,
+        documentVersion: document.version,
         applied,
+        saved: applied && !wasDirty,
         previewPatch: hunkEdit.previewPatch,
       },
     }, null, 2));
-    if (applied) {
-      await document.save();
-      void vscode.window.showInformationMessage(`${hunkEdit.target.previewLabel} applied.`);
-    } else {
+    if (!applied) {
       void vscode.window.showWarningMessage(`IntentumDiff: ${hunkEdit.target.previewLabel} did not apply.`);
+      return;
     }
+    if (wasDirty) {
+      // Never persist unrelated unsaved edits the user had in this document.
+      void vscode.window.showInformationMessage(
+        `${hunkEdit.target.previewLabel} applied. The file has other unsaved changes, so it was not saved.`,
+      );
+      return;
+    }
+    await document.save();
+    void vscode.window.showInformationMessage(`${hunkEdit.target.previewLabel} applied.`);
+  }
+
+  /** Show what a hunk action would do. Never writes or saves the target file. */
+  private async previewSemanticHunkEdit(
+    kind: SemanticReviewActionKind,
+    payload: ReviewWebviewPayload | undefined,
+    hunkEdit: SemanticReviewHunkEdit | undefined,
+    error: string | undefined,
+  ): Promise<void> {
+    if (!hunkEdit) {
+      const result = semanticReviewActionTargetForPayload(
+        { ...payload, actionKind: kind },
+        (folderUri) => vscode.Uri.parse(folderUri).fsPath,
+      );
+      if (!result.target) {
+        void vscode.window.showWarningMessage(
+          `IntentumDiff: semantic hunk preview is unavailable${result.error ?? error ? `: ${result.error ?? error}` : "."}`,
+        );
+        return;
+      }
+      const lineText = `${result.target.side} lines ${result.target.startLine}-${result.target.endLine}`;
+      this.output.appendLine(JSON.stringify({
+        semanticHunkActionPreview: {
+          kind: result.target.kind,
+          file: result.target.fsPath,
+          side: result.target.side,
+          startLine: result.target.startLine,
+          endLine: result.target.endLine,
+          label: result.target.previewLabel,
+          error,
+        },
+      }, null, 2));
+      void vscode.window.showInformationMessage(`${result.target.previewLabel} (${lineText})`);
+      return;
+    }
+    this.output.appendLine(JSON.stringify({
+      semanticHunkActionPreview: {
+        kind,
+        file: hunkEdit.target.fsPath,
+        editStartLine: hunkEdit.editStartLine,
+        editEndLine: hunkEdit.editEndLine,
+        previewPatch: hunkEdit.previewPatch,
+      },
+    }, null, 2));
+    const previewDocument = await vscode.workspace.openTextDocument({
+      language: "diff",
+      content: hunkEdit.previewPatch,
+    });
+    await vscode.window.showTextDocument(previewDocument, { preview: true, preserveFocus: true });
   }
 
   private async stageSemanticHunkEdit(

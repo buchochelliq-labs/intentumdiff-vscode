@@ -290,200 +290,17 @@ export function lineSpan(node: SemanticNode | null | undefined): number | undefi
   return span >= 1 ? span : 1;
 }
 
-// A parameter-*list* wrapper node (Python `parameters`, JS/Java `formal_parameters`,
-// Go/C# `parameter_list`, C/C++ `parameter_declaration_clause`) — distinct from an
-// individual `parameter` node.
-const PARAM_LIST_RE = /^(parameters|formal_parameters|formal_parameter_list|parameter_list|parameter_declaration_clause)$/iu;
-const PARAM_RE = /param/iu;
-const PUNCT_RE = /^[(),:;]+$/u;
-
-/**
- * Best-effort parameter count from the child subtree, or undefined when unsure.
- * A params-list wrapper is authoritative even when empty (`()` → 0); only when no
- * list wrapper exists do we fall back to counting individual `parameter` nodes.
- * Never counts the empty wrapper itself (the bug behind "takes a single parameter").
- */
-export function arity(node: SemanticNode | null | undefined): number | undefined {
-  const children = node?.children;
-  if (!Array.isArray(children) || children.length === 0) {
-    return undefined;
-  }
-  const wrapper = children.find((child) => PARAM_LIST_RE.test(child.node_type ?? ""));
-  if (wrapper) {
-    return (wrapper.children ?? []).filter((param) => {
-      const type = param.node_type ?? "";
-      return type.length > 0 && !PUNCT_RE.test(type);
-    }).length;
-  }
-  // No list wrapper: count individual params flattened onto the function node.
-  const direct = children.filter((child) => PARAM_RE.test(child.node_type ?? ""));
-  return direct.length > 0 ? direct.length : undefined;
-}
-
 /** LSP-resolved type string when present (never faked; null/absent → undefined). */
 export function typeInfo(node: SemanticNode | null | undefined): string | undefined {
   const value = node?.type_info;
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-export type Visibility = "internal" | "dunder" | "constant";
-
-/** Visibility inferred from a naming convention, or undefined when it looks public/ordinary. */
-export function visibility(label: string | null | undefined): Visibility | undefined {
-  const name = (label ?? "").trim();
-  if (!name) {
-    return undefined;
-  }
-  if (/^__.+__$/u.test(name)) {
-    return "dunder";
-  }
-  if (/^_/u.test(name)) {
-    return "internal";
-  }
-  if (name.length > 1 && /^[A-Z0-9_]+$/u.test(name) && /[A-Z]/u.test(name)) {
-    return "constant";
-  }
-  return undefined;
-}
-
-const FUNCTIONISH_RE = /function|method|def|constructor|lambda|arrow/iu;
-const BLOCK_RE = /block|body|suite/iu;
-const STUB_STMT_RE = /pass|ellipsis/iu;
-const NOT_IMPLEMENTED_RE = /not[_ ]?implemented/iu;
-const STRING_STMT_RE = /string|docstring|comment/iu;
-
-/** The statement children that make up a function/method body, or undefined if not identifiable. */
-function bodyBlock(node: SemanticNode | null | undefined): SemanticNode | undefined {
-  const children = node?.children;
-  if (!Array.isArray(children)) {
-    return undefined;
-  }
-  for (let index = children.length - 1; index >= 0; index -= 1) {
-    if (BLOCK_RE.test(children[index].node_type ?? "")) {
-      return children[index];
-    }
-  }
-  return undefined;
-}
-
-function isTrivialStatement(stmt: SemanticNode): boolean {
-  const type = (stmt.node_type ?? "").toLowerCase();
-  const label = (stmt.label ?? "").trim();
-  if (STUB_STMT_RE.test(type) || label === "pass" || label === "...") {
-    return true;
-  }
-  if (NOT_IMPLEMENTED_RE.test(type) || NOT_IMPLEMENTED_RE.test(label)) {
-    return true;
-  }
-  // Cross-language stub sentinels: Rust `todo!()` / `unimplemented!()`, Go/others `panic(...)`.
-  if (/^\s*(todo!|unimplemented!)\s*\(/iu.test(label) || /^\s*panic\s*\(/iu.test(label)) {
-    return true;
-  }
-  if (STRING_STMT_RE.test(type)) {
-    return true;
-  }
-  if (/expression_statement/iu.test(type)) {
-    const inner = stmt.children ?? [];
-    if (inner.length === 1 && STRING_STMT_RE.test(inner[0].node_type ?? "")) {
-      return true;
-    }
-    if (inner.length === 0 && /^["'`]|^\.\.\.$/u.test(label)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Whether a function/method body is a stub (no-op) or substantive — or undefined
- * when the node isn't a function or its body can't be confidently identified.
- * Positively identified only: we never falsely claim "stub".
- */
-export function bodyKind(node: SemanticNode | null | undefined): "stub" | "substantive" | undefined {
-  const type = (node?.node_type ?? "").toLowerCase();
-  if (!type || !FUNCTIONISH_RE.test(type)) {
-    return undefined;
-  }
-  const block = bodyBlock(node);
-  if (!block) {
-    return undefined;
-  }
-  const statements = block.children ?? [];
-  if (statements.length === 0) {
-    return "stub";
-  }
-  return statements.every(isTrivialStatement) ? "stub" : "substantive";
-}
-
-/** A human phrase naming the stub's sentinel, e.g. "just `pass`", or undefined. */
-function stubPhrase(node: SemanticNode | null | undefined): string | undefined {
-  const block = bodyBlock(node);
-  for (const stmt of block?.children ?? []) {
-    const type = (stmt.node_type ?? "").toLowerCase();
-    const label = (stmt.label ?? "").trim();
-    if (/pass/iu.test(type) || label === "pass") {
-      return "just `pass`";
-    }
-    if (/ellipsis/iu.test(type) || label === "...") {
-      return "just `...`";
-    }
-    if (NOT_IMPLEMENTED_RE.test(type) || NOT_IMPLEMENTED_RE.test(label)) {
-      return "raises `NotImplementedError`";
-    }
-    if (STRING_STMT_RE.test(type) || /expression_statement/iu.test(type)) {
-      return "only a docstring";
-    }
-  }
-  return undefined;
-}
-
-function findDescendant(
-  node: SemanticNode,
-  predicate: (node: SemanticNode) => boolean,
-  depth = 0,
-): SemanticNode | undefined {
-  if (depth > 4) {
-    return undefined;
-  }
-  for (const child of node.children ?? []) {
-    if (predicate(child)) {
-      return child;
-    }
-    const nested = findDescendant(child, predicate, depth + 1);
-    if (nested) {
-      return nested;
-    }
-  }
-  return undefined;
-}
-
-/**
- * A concrete fact mined from a substantive body's child subtree (leaf labels are
- * the actual source tokens): "returns `a + b`" / "calls `charge()`", or undefined.
- */
-export function bodyFact(node: SemanticNode | null | undefined): string | undefined {
-  const block = bodyBlock(node);
-  const statements = block?.children;
-  if (!Array.isArray(statements)) {
-    return undefined;
-  }
-  for (const stmt of statements) {
-    if (/return/iu.test(stmt.node_type ?? "")) {
-      const match = /^return\s+(.+)$/u.exec((stmt.label ?? "").trim());
-      if (match && match[1].length <= 40) {
-        return `returns ${code(match[1])}`;
-      }
-    }
-  }
-  for (const stmt of statements) {
-    const call = /call/iu.test(stmt.node_type ?? "") ? stmt : findDescendant(stmt, (n) => /call/iu.test(n.node_type ?? ""));
-    const callee = /^([A-Za-z_][\w.]*)\s*\(/u.exec((call?.label ?? "").trim());
-    if (callee) {
-      return `calls ${code(`${callee[1]}()`)}`;
-    }
-  }
-  return undefined;
-}
+// Arity, visibility, body shape and body contents come ONLY from engine NodeFacts.
+// The extension used to reconstruct them from the pruned tree and naming
+// conventions (param-list wrappers, leading `_`, `pass` statements, `return …`
+// labels); those guesses could become definitive intent/risk wording, so they are
+// gone (issue 132). Absent facts mean "unknown": no claim is made.
 
 function compact(clauses: Array<string | undefined>): string[] {
   return clauses.filter((clause): clause is string => Boolean(clause));
@@ -500,24 +317,6 @@ export function engineBodyKind(facts: NodeFacts | null | undefined): "stub" | "s
     default:
       return undefined;
   }
-}
-
-/** The stub sentinel as a bare keyword token (no code fragment), or undefined. */
-function stubSentinelToken(node: SemanticNode | null | undefined): string | undefined {
-  const phrase = stubPhrase(node);
-  if (!phrase) {
-    return undefined;
-  }
-  if (phrase.includes("pass")) {
-    return "pass";
-  }
-  if (phrase.includes("...")) {
-    return "...";
-  }
-  if (phrase.includes("NotImplementedError")) {
-    return "NotImplementedError";
-  }
-  return "docstring only";
 }
 
 /** The *kind* of value that changed (never the literal itself), for the private fact sheet. */
@@ -639,13 +438,11 @@ export function extractFacts(change: SemanticChange, group?: ChangeGroup): Inten
     facts.owner = owner;
   }
 
-  // Engine-emitted facts (Rust parser, from the full CST before pruning) are
-  // authoritative — prefer them over the child-tree heuristics, which only see the
-  // pruned semantic tree and can be wrong (e.g. arity for an empty parameter list).
+  // Engine-emitted facts (Rust parser, from the full CST before pruning) are the
+  // only source of structural claims; absent facts stay unknown.
   const engine = node?.facts;
-  const params = typeof engine?.param_count === "number" ? engine.param_count : arity(node);
-  if (params !== undefined) {
-    facts.arity = params;
+  if (typeof engine?.param_count === "number") {
+    facts.arity = engine.param_count;
   }
   const type = typeInfo(node);
   if (type) {
@@ -747,16 +544,8 @@ export function extractFacts(change: SemanticChange, group?: ChangeGroup): Inten
     }
   }
   const engineBody = engineBodyKind(engine);
-  const kindOfBody = engineBody ?? bodyKind(node);
-  if (kindOfBody) {
-    facts.bodyKind = kindOfBody;
-    if (kindOfBody === "stub") {
-      // The engine intentionally omits the sentinel token; only the heuristic can name it.
-      const sentinel = engineBody ? undefined : stubSentinelToken(node);
-      if (sentinel) {
-        facts.stubSentinel = sentinel;
-      }
-    }
+  if (engineBody) {
+    facts.bodyKind = engineBody;
   }
   const span = lineSpan(node);
   if (span !== undefined) {
@@ -846,25 +635,7 @@ function whyForNonCode(
   return `${capitalize(noun)} content change.`;
 }
 
-/** A stub sentence naming the actual sentinel when known, e.g. from `def ccc(): pass`. */
-function stubClause(node: SemanticNode | null | undefined): string {
-  const phrase = stubPhrase(node);
-  return phrase ? `Empty stub — no implementation yet (${phrase}).` : "Empty stub — no implementation yet.";
-}
-
-/** Visibility → a short lead clause; always yields a clause so the "why" is never empty. */
-function visibilityHead(node: SemanticNode | null | undefined): string {
-  switch (visibility(node?.label)) {
-    case "internal":
-      return "Internal helper";
-    case "dunder":
-      return "Special method";
-    case "constant":
-      return "Constant";
-    default:
-      return "Public";
-  }
-}
+const STUB_CLAUSE = "Empty stub — no implementation yet.";
 
 function sizeClause(node: SemanticNode | null | undefined): string | undefined {
   const span = lineSpan(node);
@@ -875,8 +646,8 @@ function sizeClause(node: SemanticNode | null | undefined): string | undefined {
 function whyMeaningful(change: SemanticChange): string {
   if (change.change_type === "ADDITION") {
     const node = change.new_node;
-    if ((engineBodyKind(node?.facts) ?? bodyKind(node)) === "stub") {
-      return stubClause(node);
+    if (engineBodyKind(node?.facts) === "stub") {
+      return STUB_CLAUSE;
     }
     const returnKindWord = node?.facts?.return_kind
       ? RETURN_KIND_WORD[node.facts.return_kind]
@@ -889,17 +660,10 @@ function whyMeaningful(change: SemanticChange): string {
           ? "returns a value"
           : undefined;
     const sideEffectClause = node?.facts?.side_effects ? "has a side effect" : undefined;
-    const facts = compact([bodyFact(node), returnsClause, sideEffectClause, sizeClause(node)]);
-    const head = visibilityHead(node);
-    if (facts.length > 0) {
-      return `${head} — ${facts.join(", ")}.`;
-    }
-    // "Public" is the *default* when no visibility signal was found — and our signal
-    // (leading `_`, dunder, ALL_CAPS) is Python/JS-centric, so we can't actually
-    // confirm a symbol is public/exported across languages. Don't over-claim
-    // "public API"; only assert the grounded heads (Internal helper / Constant /
-    // Special method) and otherwise state novelty honestly.
-    return head === "Public" ? "Newly added." : `${head}.`;
+    const facts = compact([returnsClause, sideEffectClause, sizeClause(node)]);
+    // No visibility lead: the engine emits no visibility fact, and naming
+    // conventions (`_x`, `__x__`, `ALL_CAPS`) are not visibility.
+    return facts.length > 0 ? `${capitalize(facts.join(", "))}.` : "Newly added.";
   }
 
   if (change.change_type === "DELETION") {
@@ -934,10 +698,13 @@ function whyMeaningful(change: SemanticChange): string {
   return "Changed logic here.";
 }
 
-/** "Gutted to a stub" / "Implemented" when a body flips between stub and substantive. */
+/**
+ * "Gutted to a stub" / "Implemented" when the engine's body facts flip between
+ * stub and substantive. Both sides must carry the fact; otherwise unknown.
+ */
 function bodyKindFlip(change: SemanticChange): string | undefined {
-  const oldKind = bodyKind(change.old_node);
-  const newKind = bodyKind(change.new_node);
+  const oldKind = engineBodyKind(change.old_node?.facts);
+  const newKind = engineBodyKind(change.new_node?.facts);
   if (!oldKind || !newKind || oldKind === newKind) {
     return undefined;
   }

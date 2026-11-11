@@ -65,10 +65,27 @@ jobs:
       matrix:
         runtime: [python, native]
         capture: [capabilities, languages-0, languages-1, languages-2, languages-3]
+        # Every leg runs the current stable pin. The min-engine legs run the
+        # oldest VS Code that package.json engines.vscode claims, so the
+        # manifest's minimum is tested rather than assumed (issue 137). The
+        # distinct `profile` value makes them new legs instead of extending
+        # the python/native capabilities legs.
+        profile: [current]
+        vscode: ["1.138.0"]
+        include:
+          - runtime: python
+            capture: capabilities
+            profile: min-engine
+            vscode: "1.90.0"
+          - runtime: native
+            capture: capabilities
+            profile: min-engine
+            vscode: "1.90.0"
     env:
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1"
       INTENTUMDIFF_TEST_RUNTIME_KIND: ${{ matrix.runtime }}
       INTENTUMDIFF_CAPTURE_SET: ${{ matrix.capture }}
+      INTENTUMDIFF_TEST_VSCODE_VERSION: ${{ matrix.vscode }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -159,7 +176,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}
+          name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}-${{ matrix.profile }}
           include-hidden-files: true
           path: |
             artifacts/real-runtime/

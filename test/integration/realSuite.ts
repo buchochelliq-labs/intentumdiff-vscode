@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { waitForVisible } from "./desktopEvidence";
 import { liveDiffProbe } from "./liveDiffProbe";
 import { assertMeasuredWasmTelemetry } from "./telemetryAcceptance";
+import { runHunkActionAcceptance } from "./hunkActionAcceptance";
 
 interface Entry { relativePath: string; status: string; changeCount: number; error?: string;
   assetDiff?: { status: string; artifacts: Record<string, string> };
@@ -170,7 +171,11 @@ export async function run(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 1500));
     execFileSync("scrot", [path.join(evidence, `${name}.png`)]);
   };
-  for (const [name, theme] of [["dark", "Default Dark Modern"], ["light", "Default Light Modern"], ["high-contrast", "Default High Contrast"]]) {
+  for (const [name, theme] of [
+    ["dark", "Default Dark Modern"], ["light", "Default Light Modern"],
+    ["dark-plus", "Default Dark+"], ["light-plus", "Default Light+"],
+    ["high-contrast", "Default High Contrast"], ["high-contrast-light", "Default High Contrast Light"],
+  ]) {
     await vscode.workspace.getConfiguration("workbench").update("colorTheme", theme, vscode.ConfigurationTarget.Global);
     await capture(`asset-${name}`);
   }
@@ -222,5 +227,6 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("intentumdiff.openDiagnostics");
   await capture("capability-diagnostics");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", path.join(evidence, "workflow.mp4"), "-filter_complex", "[0:v]fps=8,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse=dither=sierra2_4a", path.join(evidence, "workflow.gif")], { timeout: 60000 });
+  results.push({ hunkActions: await runHunkActionAcceptance(root, evidence) });
   fs.writeFileSync(path.join(evidence, "results.json"), JSON.stringify(results, null, 2));
 }

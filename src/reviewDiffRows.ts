@@ -21,9 +21,12 @@ export function diffRow(row: ReviewDiffRow, hunkId = "", sourceFallback = false)
   const oldMissing = row.oldText === undefined;
   const newMissing = row.newText === undefined;
   // Working-tree cells inside a semantic hunk are directly editable; edits are
-  // collected per hunk and applied via the git hunk-apply flow.
+  // collected per hunk and applied via the git hunk-apply flow. The cell's DOM
+  // carries decorative Unicode markers, so the exact source travels separately
+  // in data-source (JSON, so control characters survive HTML parsing) and the
+  // script serializes that, never the decorated textContent (issue 120).
   const editable = hunkId && !newMissing
-    ? ` contenteditable="true" spellcheck="false" data-hunk-edit-cell data-hunk-id="${escapeHtml(hunkId)}"`
+    ? ` contenteditable="plaintext-only" spellcheck="false" data-hunk-edit-cell data-hunk-id="${escapeHtml(hunkId)}" data-source="${escapeHtml(JSON.stringify(row.newText ?? ""))}"`
     : "";
   return `<div id="${escapeHtml(row.id ?? "")}" class="diff-row diff-${row.kind}${semantic}${intent}" data-row-kind="${escapeHtml(row.kind)}"${row.semantic ? " data-semantic=\"true\"" : ""}${row.intent ? ` data-intent="${escapeHtml(row.intent)}"` : ""} title="${sourceFallback ? "Source evidence line; semantic equivalence unknown" : row.intent === "refactoring" ? "Refactoring evidence line" : row.semantic ? "Semantic evidence line" : ""}">
     <span class="diff-marker">${row.semantic ? `<span class="semantic-token">i</span>` : escapeHtml(rowMarker(row))}</span>
@@ -162,7 +165,7 @@ export function hunkActionButtons(payload: ReviewWebviewPayload, row: ReviewDiff
     ${actionButton("Edit in native", "openNativeDiff", editInNativePayload, "native")}
     ${actionButton("Stage hunk", "stageHunk", { ...hunkPayload, actionKind: "stageHunk" }, "accept")}
     ${actionButton("Revert hunk", "revertHunk", { ...hunkPayload, actionKind: "revertHunk" }, "risk")}
-    ${actionButton("Preview apply", "applyHunk", { ...hunkPayload, actionKind: "applyHunk" }, "detail")}
+    ${actionButton("Preview apply", "previewHunk", { ...hunkPayload, actionKind: "applyHunk" }, "detail")}
     ${applyEdits}
   </span>`;
 }
@@ -177,6 +180,9 @@ export function hunkTextPayload(hunkRows: ReviewDiffRow[]): ReviewWebviewHunkPay
   return {
     oldLines,
     newLines,
+    // Exact reviewed working-tree lines; the host verifies the live document
+    // against these before any write (issue 119).
+    reviewedNewLines: [...newLines],
     oldStartLine: minLine(oldNumbers),
     oldEndLine: maxLine(oldNumbers),
     newStartLine: minLine(newNumbers),
