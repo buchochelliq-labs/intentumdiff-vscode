@@ -589,11 +589,29 @@ function denseProjectedLineMap(
   return dense;
 }
 
+/**
+ * Every review-panel message that can change the working tree or the index
+ * (issue 134). The panel is not a diff editor: these are hunk/file-scoped SCM
+ * actions that the HOST performs through verified paths (native Git commands,
+ * `git apply --cached` with context, or a WorkspaceEdit checked byte-for-byte
+ * against the live document). Free-form editing belongs to the native diff
+ * ("Edit in native"). docs/ARCHITECTURE.md lists the same inventory; a test
+ * keeps them in sync.
+ */
+export const REVIEW_WEBVIEW_WRITE_COMMANDS = ["stageFile", "revertFile", "stageHunk", "revertHunk", "editHunk"] as const;
+
+/** Every command the review panel may send; anything else is rejected. */
+export const REVIEW_WEBVIEW_COMMANDS: readonly ReviewWebviewCommand[] = [
+  "openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk",
+  "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes",
+  "exportReleaseNotes", "refresh", "reveal",
+];
+
 export function isReviewWebviewMessage(value: unknown): value is ReviewWebviewMessage {
   if (!isRecord(value)) {
     return false;
   }
-  if (!["openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk", "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes", "exportReleaseNotes", "refresh", "reveal"].includes(String(value.command))) {
+  if (!REVIEW_WEBVIEW_COMMANDS.includes(String(value.command) as ReviewWebviewCommand)) {
     return false;
   }
   if (value.payload === undefined) {

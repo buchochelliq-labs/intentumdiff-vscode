@@ -16,7 +16,8 @@ remain next to it in `wasm/`. There is no automatic Python fallback.
 
 - **The native diff editor is primary** — diffs open with `vscode.diff` (left: read-only
   `intentumdiff-base:` from `git show`; right: the real working-tree file). Editing re-runs the
-  engine (debounced) and refreshes intent live. No webview diff editors. An open comparison
+  engine (debounced) and refreshes intent live. No webview diff editors (see "Editing
+  boundary" below for the review panel's verified hunk actions). An open comparison
   records its identity (baseline ref + working-tree right side); every live or review result
   for the same file and baseline reconciles it in place (CodeLens, status, navigation and the
   semantic-only projection read the same current diff). A full refresh keeps contexts whose
@@ -26,6 +27,26 @@ remain next to it in `wasm/`. There is no automatic Python fallback.
 - **One review webview** (dashboard, Intent/Risk/Evidence/Notes/Release-Notes tabs, per-hunk
   staging, the perceptual image diff) — all artifacts come from the engine; **no image
   processing in the webview**.
+
+### Editing boundary (decision for #134)
+
+The native diff editor is the only **free-form** editing surface (open, type, add or remove
+lines; the engine re-runs live). The review panel is **not a diff editor**: no Monaco, no
+open-a-file editing, no line insertion or removal. It keeps a closed set of hunk- or
+file-scoped SCM actions that the extension host performs; the panel only sends a message.
+
+| Panel message | Host path | Safety |
+|---|---|---|
+| `stageFile` | VS Code `git.stage` | Native Git extension. |
+| `revertFile` | VS Code `git.clean` | Modal confirmation; native Git extension. |
+| `stageHunk` | `git apply --cached` | Patch carries real context, so Git validates it against the actual index (#125). |
+| `revertHunk` | `WorkspaceEdit` | Modal confirmation; the reviewed working lines (or, for a deletion, its neighbours) must still match the live document byte-for-byte (#119, #125). |
+| `editHunk` ("Apply edits" on an existing hunk's cells) | `WorkspaceEdit` | Verified against the untouched reviewed lines; exact characters, EOL and final-newline state preserved; saved only if the file had no other unsaved edits (#119, #120). |
+| `previewHunk` / bare `applyHunk` | none | Shows the patch; never writes. |
+
+`REVIEW_WEBVIEW_WRITE_COMMANDS` in `reviewWebviewModel.ts` is the code copy of this list and
+a test keeps both in sync; adding a write path means extending this table and meeting the
+same verification bar. "Edit in native" on each hunk hands off to the native diff.
 
 Deep-dive on the diff viewer: [architecture/diff-viewer.md](architecture/diff-viewer.md).
 

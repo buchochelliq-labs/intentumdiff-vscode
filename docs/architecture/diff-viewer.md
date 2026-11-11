@@ -99,8 +99,10 @@ consumes `SemanticDiff` (`src/types.ts`) and renders it across the surfaces abov
 `reviewWebviewModel.ts` builds the panel HTML (theme-native, 100% `--vscode-*` variables):
 
 - **Intent summary / Release Notes / Evidence / Diagnostics** views.
-- An **editable semantic-diff tab** with per-hunk **Stage/Revert** (git index patches) and
-  inline editing, syntax-highlighted via the vendored highlighter in `media/highlight/`.
+- A **semantic-diff tab** with per-hunk **Stage/Revert** (git index patches) and
+  hunk-scoped "Apply edits" on an existing hunk's cells — verified host-side SCM actions,
+  not a diff editor (inventory: `docs/ARCHITECTURE.md` "Editing boundary"; free-form editing
+  is the native diff via "Edit in native"), syntax-highlighted via the vendored highlighter in `media/highlight/`.
   Pure insertions and deletions are ordinary zero-length-side hunks: the payload carries
   explicit anchors (`oldLinesBefore`/`newLinesBefore`, 0 = beginning of file), up to three
   unchanged context lines and missing-final-newline flags (`hunkTextPayloadAt`). Index
