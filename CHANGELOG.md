@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — 0.0.3
+
+### Incomplete and equivalent reviews
+
+The engine now says how complete each review is. The extension shows that instead of
+deciding it:
+
+- **Incomplete reviews are never shown as "no changes".** Sometimes the engine finds that
+  the old and new file differ but cannot explain the change. The review panel, the Semantic
+  Changes tree, the semantic-only diff and the status bar tooltip then show the engine's own
+  message word for word. The lines it could not explain are marked as "changed but
+  unexplained" in the native diff editor, using their line positions only.
+- **Report a bug, with a preview first.** "Report bug…" in the review panel, the inline
+  action on the tree entry, or *IntentumDiff: Report Incomplete Review…* shows the engine's
+  issue title and body in a dialog. The GitHub issue opens only when you choose "Open GitHub
+  issue". If the link holds a shortened report, the dialog says so and offers "Copy full
+  report" to copy the whole text. Nothing is sent automatically. The report holds only the
+  text the engine wrote: no file names, paths or source code.
+- **Equivalent changes** (for example JSON keys that were only reordered) are shown as
+  "Equivalent (style-only)", with the name of the rule that proved them when the engine
+  gives one.
+- A Python runtime that does not report completeness yet behaves exactly as before.
+
 ## 0.0.2 — pre-release (not published)
 
 Published on the Marketplace and Open VSX **pre-release channel**: install it with

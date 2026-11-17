@@ -16,6 +16,15 @@
 import { compareReviewTimelineSnapshots, type ReviewTimelineSnapshot, type ReviewTimelineSnapshotComparison } from "./reviewTimelineModel";
 import type { NodePosition, SemanticChange, SemanticDiff, SemanticNode } from "./types";
 import { script } from "./reviewWebviewScript";
+import {
+  EQUIVALENT_REVIEW_LABEL,
+  INCOMPLETE_REVIEW_LABEL,
+  bugReportPreview,
+  equivalentDescription,
+  incompleteMessage,
+  incompleteReview,
+  isEquivalentReview,
+} from "./reviewCompleteness";
 import { styles } from "./reviewWebviewStyles";
 import {
   assetArtifact,
@@ -73,6 +82,7 @@ export type ReviewWebviewCommand =
   | "cycleGrouping"
   | "copyReleaseNotes"
   | "exportReleaseNotes"
+  | "reportIncomplete"
   | "refresh"
   | "reveal";
 
@@ -347,6 +357,7 @@ const EMPTY_SUMMARY: ReviewSummary = {
   importantCount: 0,
   semanticChangeCount: 0,
   styleOnlyCount: 0,
+  incompleteCount: 0,
   cleanCount: 0,
 };
 
@@ -604,7 +615,7 @@ export const REVIEW_WEBVIEW_WRITE_COMMANDS = ["stageFile", "revertFile", "stageH
 export const REVIEW_WEBVIEW_COMMANDS: readonly ReviewWebviewCommand[] = [
   "openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk",
   "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes",
-  "exportReleaseNotes", "refresh", "reveal",
+  "exportReleaseNotes", "reportIncomplete", "refresh", "reveal",
 ];
 
 export function isReviewWebviewMessage(value: unknown): value is ReviewWebviewMessage {
@@ -683,6 +694,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${viewTab("Diagnostics", "diagnostics", "detail")}
         </nav>
       ${sourceFallback ? `<p class="fallback-notice" role="note">Source fallback · Semantic equivalence unknown. Review the source changes; intent could not be established.</p>` : ""}
+      ${incompleteNotice(model)}
       </header>
       <header class="diff-topbar" aria-label="Current file review controls">
         <nav class="top-badges" aria-label="Review filters and counts">
@@ -709,6 +721,23 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
       </main>
     </section>`;
   return page(`IntentumDiff - ${file.relativePath}`, body, options);
+}
+
+/**
+ * Core issue 252: core could not explain this file's change. Shows core's message verbatim and
+ * offers the report-a-bug preview (which asks before opening anything).
+ */
+function incompleteNotice(model: ReviewPanelModel): string {
+  const message = incompleteMessage(model.diff);
+  if (message === undefined) {
+    return "";
+  }
+  const payload = model.file.payload;
+  const canReport = payload !== undefined && bugReportPreview(incompleteReview(model.diff)) !== undefined;
+  return `<div class="incomplete-notice" role="alert" data-completeness="incomplete">
+        <p><strong>${escapeHtml(INCOMPLETE_REVIEW_LABEL)}</strong> <span class="incomplete-message">${escapeHtml(message)}</span></p>
+        ${canReport ? actionButton("Report bug…", "reportIncomplete", payload, "issue") : ""}
+      </div>`;
 }
 
 function renderAdaptiveDiffPage(model: ReviewPanelModel, options: RenderOptions): string {
@@ -1065,6 +1094,13 @@ function fileDescription(file: ReviewFile): string {
     file.diff?.change_groups?.length ? `${file.diff.change_groups.length} groups` : undefined,
     file.diff?.changes?.length ? `${file.diff.changes.length} raw changes` : undefined,
   ].filter(Boolean);
+  if (incompleteMessage(file.diff) !== undefined) {
+    // Core issue 252: an unexplained source delta is never "No semantic changes".
+    return [...parts, INCOMPLETE_REVIEW_LABEL].join(" - ");
+  }
+  if (parts.length === 0 && isEquivalentReview(file.diff)) {
+    return [EQUIVALENT_REVIEW_LABEL, equivalentDescription(file.diff)].filter(Boolean).join(" - ");
+  }
   return parts.join(" - ") || "No semantic changes";
 }
 
@@ -1740,14 +1776,24 @@ function reviewTabbedPages(model: ReviewPanelModel, stats: DiffStats): string {
     internalCount ? `${internalCount} internal change${internalCount === 1 ? "" : "s"}` : "",
     contentCount ? `${contentCount} content change${contentCount === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
-  const intentHeroTitle = intentSummaryParts.length > 0
-    ? intentSummaryParts.join(" · ")
-    : noise ? "Formatting / noise only" : "No semantic changes";
-  const intentHeroDesc = intentSummaryParts.length > 0
-    ? "IntentumDiff groups source evidence into review intent so changed meaning stays visible."
-    : noise
-      ? `All ${noise.count} raw change${noise.count === 1 ? "" : "s"} in this file were suppressed as formatting or noise.`
-      : "No behavior-affecting or refactor changes were detected in this file.";
+  const incomplete = incompleteMessage(model.diff);
+  const equivalent = isEquivalentReview(model.diff);
+  const equivalentProof = equivalentDescription(model.diff);
+  const intentHeroTitle = incomplete !== undefined
+    ? INCOMPLETE_REVIEW_LABEL
+    : intentSummaryParts.length > 0
+      ? intentSummaryParts.join(" · ")
+      : equivalent ? EQUIVALENT_REVIEW_LABEL
+      : noise ? "Formatting / noise only" : "No semantic changes";
+  const intentHeroDesc = incomplete !== undefined
+    ? incomplete
+    : intentSummaryParts.length > 0
+      ? "IntentumDiff groups source evidence into review intent so changed meaning stays visible."
+      : equivalent
+        ? ["The sources differ, and IntentumDiff proved them equivalent.", equivalentProof ? `(${equivalentProof})` : ""].filter(Boolean).join(" ")
+      : noise
+        ? `All ${noise.count} raw change${noise.count === 1 ? "" : "s"} in this file were suppressed as formatting or noise.`
+        : "No behavior-affecting or refactor changes were detected in this file.";
   const whatChangedList = semanticEntries.length > 0
     ? semanticEntries.slice(0, 8).map(intentMeaningItem).join("")
     : noise
@@ -2163,7 +2209,7 @@ function viewTab(label: string, view: string, icon: IconName, active = false): s
 }
 
 function entryIcon(kind: ReviewWebviewEntry["kind"]): string {
-  if (kind === "guardrail") return iconSvg("risk");
+  if (kind === "guardrail" || kind === "incomplete") return iconSvg("risk");
   if (kind === "schema-status") return iconSvg("schema");
   if (kind === "refactoring" || kind === "moved-code") return iconSvg("intent");
   if (kind === "raw-evidence" || kind === "evidence") return iconSvg("evidence");
@@ -2186,6 +2232,7 @@ function entryKindLabel(kind: ReviewWebviewEntry["kind"]): string {
     "change": "Change",
     "evidence": "Evidence",
     "style": "Style",
+    "incomplete": "Incomplete review",
     "clean": "Clean",
     "skipped": "Skipped",
     "error": "Error",

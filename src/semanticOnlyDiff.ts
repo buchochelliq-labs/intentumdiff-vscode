@@ -1,4 +1,5 @@
 import type { DecorationLike, NodePosition, SemanticChange, SemanticDiff } from "./types";
+import { incompleteMessage } from "./reviewCompleteness";
 
 export const SEMANTIC_BASE_SCHEME = "intentumdiff-semantic-base";
 export const SEMANTIC_MODIFIED_SCHEME = "intentumdiff-semantic-modified";
@@ -146,9 +147,12 @@ export function buildSemanticOnlyDocuments(
   };
 
   if (chunks.length === 0) {
+    // Core issue 252: an incomplete review is not "no semantic changes"; show core's message.
+    const incomplete = incompleteMessage(diff);
+    const emptyText = incomplete ?? SEMANTIC_EMPTY_MESSAGE;
     return {
-      baseText: SEMANTIC_EMPTY_MESSAGE,
-      modifiedText: SEMANTIC_EMPTY_MESSAGE,
+      baseText: emptyText,
+      modifiedText: emptyText,
       projection: {
         baseLineMap: new Map(),
         modifiedLineMap: new Map(),

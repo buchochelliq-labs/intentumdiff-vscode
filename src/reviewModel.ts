@@ -12,6 +12,14 @@ import {
   type SemanticChangeTargetSide,
 } from "./mapper";
 import { kindForChange } from "./intentCodeLens";
+import {
+  EQUIVALENT_REVIEW_LABEL,
+  equivalentDescription,
+  incompleteMessage,
+  incompleteSourceRanges,
+  isEquivalentReview,
+  rangeLines,
+} from "./reviewCompleteness";
 
 export type ReviewFileStatus = "pending" | "ready" | "skipped" | "error";
 export type ReviewEntryKind =
@@ -29,6 +37,7 @@ export type ReviewEntryKind =
   | "change"
   | "evidence"
   | "style"
+  | "incomplete"
   | "clean"
   | "skipped"
   | "error";
@@ -109,6 +118,8 @@ export interface ReviewSummary {
   importantCount: number;
   semanticChangeCount: number;
   styleOnlyCount: number;
+  /** Files core reported as `incomplete` (core issue 252): never counted as clean. */
+  incompleteCount: number;
   cleanCount: number;
 }
 
@@ -126,6 +137,7 @@ export function summarizeReview(files: ReviewFile[]): ReviewSummary {
     importantCount: 0,
     semanticChangeCount: 0,
     styleOnlyCount: 0,
+    incompleteCount: 0,
     cleanCount: 0,
   };
 
@@ -151,8 +163,13 @@ export function summarizeReview(files: ReviewFile[]): ReviewSummary {
     if (isStyleOnlyReviewDiff(diff)) {
       summary.styleOnlyCount += 1;
     }
+    const incomplete = incompleteMessage(diff) !== undefined;
+    if (incomplete) {
+      summary.incompleteCount += 1;
+    }
     if (
       fileLifecycle(diff) === "modified"
+      && !incomplete
       && !isStyleOnlyReviewDiff(diff)
       && (diff?.changes?.length ?? 0) === 0
       && violations.length === 0
@@ -215,6 +232,10 @@ export function reviewEntriesForFile(file: ReviewFile): ReviewEntry[] {
 
   const diff = file.diff;
   const entries: ReviewEntry[] = [];
+  const incompleteEntry = reviewEntryForIncomplete(diff);
+  if (incompleteEntry) {
+    entries.push(incompleteEntry);
+  }
   for (const violation of diff?.guardrail_violations ?? []) {
     entries.push({
       kind: "guardrail",
@@ -298,11 +319,9 @@ export function reviewEntriesForFile(file: ReviewFile): ReviewEntry[] {
     }
   }
   if (entries.length === 0 && isStyleOnlyReviewDiff(diff)) {
-    entries.push({
-      kind: "style",
-      label: "Style-only changes",
-      severity: "info",
-    });
+    entries.push(isEquivalentReview(diff)
+      ? { kind: "style", label: EQUIVALENT_REVIEW_LABEL, description: equivalentDescription(diff), severity: "info" }
+      : { kind: "style", label: "Style-only changes", severity: "info" });
   }
   if (entries.length === 0) {
     entries.push({
@@ -321,6 +340,28 @@ export function reviewEntriesForFile(file: ReviewFile): ReviewEntry[] {
     } ];
   }
   return sortReviewEntries(entries);
+}
+
+/**
+ * Core could not explain this file's source delta (core issue 252). The entry's label is core's
+ * `incomplete.message` verbatim and its position is the first unexplained range, so opening
+ * it lands on the highlighted lines.
+ */
+function reviewEntryForIncomplete(diff: SemanticDiff | undefined): ReviewEntry | undefined {
+  const message = incompleteMessage(diff);
+  if (message === undefined) {
+    return undefined;
+  }
+  const [first] = incompleteSourceRanges(diff);
+  const lines = first ? rangeLines(first, "new") : undefined;
+  return {
+    kind: "incomplete",
+    label: message,
+    description: "incomplete review",
+    severity: "warning",
+    position: lines ? { start_line: lines.start, start_col: 0, end_line: lines.start, end_col: 0 } : undefined,
+    positionSide: lines ? "modified" : undefined,
+  };
 }
 
 function reviewEntryForFileLifecycle(file: ReviewFile): ReviewEntry | undefined {
@@ -633,7 +674,7 @@ function fileGroupRank(group: ReviewFileGroup): number {
   if (group.summary.guardrailCount > 0) {
     return 0;
   }
-  if (group.summary.semanticChangeCount > 0) {
+  if (group.summary.semanticChangeCount > 0 || group.summary.incompleteCount > 0) {
     return 1;
   }
   if (group.summary.errorCount > 0) {
@@ -688,7 +729,7 @@ function fileLifecycle(diff: SemanticDiff | undefined): "added" | "deleted" | "m
 }
 
 export function isStyleOnlyReviewDiff(diff: SemanticDiff | undefined): boolean {
-  return diff?.is_style_only === true && fileLifecycle(diff) === "modified";
+  return (diff?.is_style_only === true || isEquivalentReview(diff)) && fileLifecycle(diff) === "modified";
 }
 
 function fuelHotspots(diff: SemanticDiff | undefined): Record<string, unknown>[] {
@@ -722,7 +763,8 @@ function fileRank(file: ReviewFile): number {
   if ((file.diff?.guardrail_violations?.length ?? 0) > 0) {
     return 0;
   }
-  if ((file.diff?.change_groups?.length ?? 0) > 0 || (file.diff?.changes?.length ?? 0) > 0) {
+  if ((file.diff?.change_groups?.length ?? 0) > 0 || (file.diff?.changes?.length ?? 0) > 0
+    || incompleteMessage(file.diff) !== undefined) {
     return 1;
   }
   if (file.status === "error") {
@@ -740,6 +782,9 @@ function fileRank(file: ReviewFile): number {
 function entryRank(entry: ReviewEntry): number {
   if (entry.kind === "guardrail") {
     return entry.severity === "error" ? 0 : 1;
+  }
+  if (entry.kind === "incomplete") {
+    return 1;
   }
   if (entry.kind === "cross-file") {
     return 2;
@@ -1109,8 +1154,14 @@ export function tooltipForReviewFile(file: ReviewFile): string {
   if (rawCount > 0) {
     lines.push(plural(rawCount, "raw change"));
   }
+  const incomplete = incompleteMessage(diff);
+  if (incomplete !== undefined) {
+    lines.push(incomplete);
+  }
   if (isStyleOnlyReviewDiff(diff)) {
-    lines.push("Style-only changes");
+    lines.push(isEquivalentReview(diff)
+      ? [EQUIVALENT_REVIEW_LABEL, equivalentDescription(diff)].filter(Boolean).join(" | ")
+      : "Style-only changes");
   }
   if (summary.cleanCount > 0) {
     lines.push("No semantic changes");

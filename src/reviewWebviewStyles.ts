@@ -240,6 +240,9 @@ export function styles(): string {
     .diff-table { font-family:var(--vscode-editor-font-family, Consolas, monospace); font-size:12px; overflow:auto; max-height:72vh; min-height:360px; padding-right:22px; background:var(--diff-editor-bg); }
     .diff-hunk { display:grid; grid-template-columns:var(--diff-grid); align-items:center; min-width:0; border-top:1px solid rgba(79,214,255,.28); border-bottom:1px solid rgba(79,214,255,.18); background:linear-gradient(90deg,rgba(79,214,255,.12),rgba(181,140,255,.09)); color:var(--bright-fg); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
     .fallback-notice { grid-column:1 / -1; margin:0; padding:10px 12px; border:1px solid var(--vscode-editorWarning-foreground); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
+    .incomplete-notice { grid-column:1 / -1; display:flex; align-items:flex-start; gap:12px; margin:0; padding:10px 12px; border:1px dashed var(--vscode-editorWarning-foreground); color:var(--vscode-foreground); background:var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)); font-family:var(--vscode-font-family); }
+    .incomplete-notice p { flex:1 1 auto; margin:0; overflow-wrap:anywhere; }
+    .incomplete-notice strong { color:var(--vscode-editorWarning-foreground); }
     .diff-hunk strong { color:var(--bright-fg); }
     .hunk-title { grid-column:3; min-width:0; display:flex; align-items:center; gap:8px; padding:7px 10px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
     .hunk-title small { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--muted); text-transform:none; letter-spacing:0; }

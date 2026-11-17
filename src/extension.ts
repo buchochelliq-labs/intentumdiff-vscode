@@ -6,6 +6,8 @@ import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import * as vscode from "vscode";
 import { BaseContentProvider } from "./baseContentProvider";
+import { reportIncompleteReview } from "./incompleteReport";
+import { incompleteMessage, incompleteReview } from "./reviewCompleteness";
 import { ReviewTelemetryService } from "./reviewTelemetryService";
 import { ServerSessionManager, type LiveServerFailureDetails, type ServerSession } from "./serverSessionManager";
 import {
@@ -264,6 +266,7 @@ class PysdController implements vscode.Disposable {
   private readonly diagnostics = vscode.languages.createDiagnosticCollection("IntentumDiff");
   private readonly status = vscode.window.createStatusBarItem("intentumdiff.comparisonStatus", vscode.StatusBarAlignment.Left, 20);
   private workspaceStatus = "IntentumDiff";
+  private workspaceStatusTooltip: string | undefined;
   private readonly pendingLiveStatus = new Set<string>();
   private readonly diffStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 20);
   private readonly reviewTree = new SemanticReviewTreeProvider();
@@ -412,6 +415,14 @@ class PysdController implements vscode.Disposable {
       },
       overviewRulerColor: new vscode.ThemeColor("intentumdiff.semanticChanges.deletion"),
       overviewRulerLane: vscode.OverviewRulerLane.Right,
+    }),
+    // Core issue 252: lines core reported as changed but could not explain (positions only).
+    unexplained: vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      border: "1px dashed",
+      borderColor: new vscode.ThemeColor("intentumdiff.semanticChanges.incomplete"),
+      overviewRulerColor: new vscode.ThemeColor("intentumdiff.semanticChanges.incomplete"),
+      overviewRulerLane: vscode.OverviewRulerLane.Full,
     }),
   };
 
@@ -677,6 +688,10 @@ class PysdController implements vscode.Disposable {
       vscode.commands.registerCommand("intentumdiff.collapseSemanticDiffContext", () => this.adjustSemanticContextLines(-1)),
       vscode.commands.registerCommand("intentumdiff.clearReview", () => this.clearReview()),
       vscode.commands.registerCommand("intentumdiff.revealActiveFileInReview", () => this.revealActiveFileInReview()),
+      vscode.commands.registerCommand(
+        "intentumdiff.reportIncompleteReview",
+        (target?: OpenReviewPayload | ReviewTreeNode) => this.reportIncompleteReview(target),
+      ),
       vscode.workspace.onDidOpenTextDocument((document) => this.scheduleDocument(document)),
       vscode.workspace.onDidSaveTextDocument((document) => {
         this.scheduleDocument(document);
@@ -898,6 +913,10 @@ class PysdController implements vscode.Disposable {
       this.openTimelineSnapshot(message.payload);
       return;
     }
+    if (message.command === "reportIncomplete") {
+      await this.reportIncompleteReview(message.payload);
+      return;
+    }
     if (message.command === "openCustomDiff") {
       await this.openReviewPanel(message.payload);
       return;
@@ -931,6 +950,36 @@ class PysdController implements vscode.Disposable {
     if (message.command === "editHunk") {
       await vscode.commands.executeCommand("intentumdiff.reviewPanel.applyHunk", message.payload);
     }
+  }
+
+  /**
+   * Core issue 252 report-a-bug flow: preview core's sanitised report in a modal and open the
+   * GitHub issue only on explicit confirmation. Only core-provided text is shown or sent.
+   */
+  private async reportIncompleteReview(target?: OpenReviewPayload | ReviewTreeNode | ReviewWebviewPayload): Promise<void> {
+    await reportIncompleteReview(incompleteReview(this.diffForReportTarget(target)));
+  }
+
+  private diffForReportTarget(target?: OpenReviewPayload | ReviewTreeNode | ReviewWebviewPayload): SemanticDiff | undefined {
+    if (target && "kind" in target && (target.kind === "entry" || target.kind === "file" || target.kind === "evidence")) {
+      return this.reviewFiles.get(reviewKey(target.file.folderUri, target.file.relativePath))?.diff ?? target.file.diff;
+    }
+    if (target && !("kind" in target) && typeof target.folderUri === "string" && typeof target.relativePath === "string") {
+      const reviewed = this.reviewFiles.get(reviewKey(target.folderUri, target.relativePath))?.diff;
+      if (reviewed) {
+        return reviewed;
+      }
+    }
+    const panelDiff = this.reviewPanelController?.activeModel?.diff;
+    if (panelDiff && incompleteReview(panelDiff)) {
+      return panelDiff;
+    }
+    const nativeDiff = this.diffSurfaces.active()?.diff;
+    if (nativeDiff && incompleteReview(nativeDiff)) {
+      return nativeDiff;
+    }
+    const uri = vscode.window.activeTextEditor?.document.uri.toString();
+    return uri ? this.liveIntentContexts.get(uri)?.diff : undefined;
   }
 
   /**
@@ -2801,6 +2850,15 @@ class PysdController implements vscode.Disposable {
       this.setWorkspaceStatus(`IntentumDiff: review ${summary.errorCount} error`);
     } else if (summary.crossFileChangeCount > 0) {
       this.setWorkspaceStatus(`IntentumDiff: review ${summary.crossFileChangeCount} cross-file`);
+    } else if (summary.incompleteCount > 0) {
+      // Core issue 252: an unexplained source delta is never a clean review.
+      const messages = [...new Set([...this.reviewFiles.values()]
+        .map((file) => file.status === "ready" ? incompleteMessage(file.diff) : undefined)
+        .filter((message): message is string => message !== undefined))];
+      this.setWorkspaceStatus(
+        `$(warning) IntentumDiff: review ${summary.incompleteCount} incomplete`,
+        messages.join("\n\n"),
+      );
     } else {
       this.setWorkspaceStatus(`IntentumDiff: review ${summary.semanticChangeCount} changes`);
     }
@@ -2989,8 +3047,9 @@ class PysdController implements vscode.Disposable {
     this.hideComments = config.get("diff.hideComments", false);
   }
 
-  private setWorkspaceStatus(text: string): void {
+  private setWorkspaceStatus(text: string, tooltip?: string): void {
     this.workspaceStatus = text;
+    this.workspaceStatusTooltip = tooltip;
     this.refreshComparisonStatus();
   }
 
@@ -3009,7 +3068,7 @@ class PysdController implements vscode.Disposable {
     const live: StatusContext | undefined = context
       ? { ...context, baseline: "live file", pending: this.pendingLiveStatus.has(uri!) }
       : uri && this.pendingLiveStatus.has(uri) ? { relativePath: vscode.window.activeTextEditor!.document.uri.fsPath, baseline: "live file", pending: true } : undefined;
-    const presentation = statusForOwner(this.workspaceStatus, comparison, live);
+    const presentation = statusForOwner(this.workspaceStatus, comparison, live, this.workspaceStatusTooltip);
     this.status.text = presentation.text;
     this.status.tooltip = presentation.tooltip;
   }

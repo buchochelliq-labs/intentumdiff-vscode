@@ -6,6 +6,12 @@ import type {
   SemanticChange,
   SemanticDiff,
 } from "./types";
+import {
+  equivalenceProof,
+  incompleteMessage,
+  reviewCompleteness,
+  unexplainedDecorations,
+} from "./reviewCompleteness";
 
 export function summarizeDiff(diff: SemanticDiff): DiffSummary {
   const violations = diff.guardrail_violations ?? [];
@@ -14,9 +20,25 @@ export function summarizeDiff(diff: SemanticDiff): DiffSummary {
     guardrailCount: violations.length,
     immutableCount: violations.filter((item) => item.severity === "immutable").length,
     importantCount: violations.filter((item) => item.severity === "important").length,
-    styleOnly: diff.is_style_only === true,
+    styleOnly: diff.is_style_only === true || reviewCompleteness(diff) === "equivalent",
     hasParseErrors: (diff.parse_errors?.length ?? 0) > 0,
     language: diff.language,
+    ...completenessSummary(diff),
+  };
+}
+
+/** Completeness keys only when core sent a verdict, so older DTOs summarise exactly as before. */
+function completenessSummary(diff: SemanticDiff): Pick<DiffSummary, "completeness" | "incompleteMessage" | "equivalenceProof"> {
+  const completeness = reviewCompleteness(diff);
+  if (!completeness) {
+    return {};
+  }
+  const message = incompleteMessage(diff);
+  const proof = equivalenceProof(diff);
+  return {
+    completeness,
+    ...(message !== undefined ? { incompleteMessage: message } : {}),
+    ...(proof !== undefined ? { equivalenceProof: proof } : {}),
   };
 }
 
@@ -138,6 +160,7 @@ export function diffToModifiedDecorations(diff: SemanticDiff): DecorationLike[] 
       }
     }
   }
+  decorations.push(...unexplainedDecorations(diff, "new"));
   return decorations;
 }
 
@@ -274,6 +297,7 @@ export function diffToBaseDecorations(diff: SemanticDiff): DecorationLike[] {
       isComment: isCommentChange(change),
     });
   }
+  decorations.push(...unexplainedDecorations(diff, "old"));
   return decorations;
 }
 
@@ -294,6 +318,13 @@ export function statusText(diff: SemanticDiff): string {
   const hotspotCount = fuelHotspots(diff).length;
   if (hotspotCount > 0) {
     return `IntentumDiff: ${hotspotCount} fuel warning${hotspotCount === 1 ? "" : "s"}`;
+  }
+  if (summary.incompleteMessage !== undefined) {
+    // Never "clean": core could not explain a source delta (core issue 252).
+    return "IntentumDiff: incomplete review";
+  }
+  if (summary.completeness === "equivalent") {
+    return "IntentumDiff: equivalent (style-only)";
   }
   if (summary.styleOnly) {
     return "IntentumDiff: style-only";
