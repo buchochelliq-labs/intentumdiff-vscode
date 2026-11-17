@@ -156,19 +156,19 @@ still need dedicated interaction evidence.
 
 ## Native runtime candidate
 
-The current Linux x64 test artifact comes from [native-server run 41802218429](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/41802218429)
-(release head `235cf4b`, Core `726fd07`), the same candidate the packaged-VSIX acceptance
+The current Linux x64 test artifact comes from [native-server run 44079955211](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/44079955211)
+(release head `b18a95e`, live-server #39, Core `74618c3`), the same candidate the packaged-VSIX acceptance
 gate tests. It is a CI candidate, not a published release, so 0.0.2's `auto` engine does
 not select it; set `intentumdiff.liveServer.engine` to `native` to use it. Run these commands from this checkout
 with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
 Python is used here to verify the download, not to run the extension's engine.
 
 ```sh
-gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/13308991709/zip > native-candidate.zip
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/14328330090/zip > native-candidate.zip
 python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
-  --expected-archive-sha256 e7b2f2f54ad589ad53a719c844e49ebe5f8162d48aae66d72ba9c9a926646f6b \
-  --expected-server-commit 235cf4bdd789aefc2b9eaf0a76b465ccec14742a \
-  --expected-core-commit 726fd07c77a83d2554d3eca68b6469e9461b87bc
+  --expected-archive-sha256 67cdfde4772d6a927977dc8fc3d3836564e55d5a38bb18962eeb6cca0eb6e86d \
+  --expected-server-commit b18a95e5953b145c1534431cc0782c0545ec4f1f \
+  --expected-core-commit 74618c311836983b4f60ae2d8389edfdd14f7793
 export PATH="$PWD/native-runtime:$PATH"
 ```
 
