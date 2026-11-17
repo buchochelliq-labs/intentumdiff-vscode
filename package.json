@@ -976,17 +976,18 @@
     "@types/node": "^20.12.12",
     "@types/vscode": "^1.90.0",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.1.1",
     "jsdom": "^29.1.1",
-    "ovsx": "1.0.0",
+    "ovsx": "1.4.0",
     "typescript": "^5.4.5"
   },
   "overrides": {
     "tmp": "0.2.7",
-    "js-yaml": "^4.3.0",
-    "undici": "^7.29.0",
-    "brace-expansion": "^5.0.9",
-    "fast-uri": "^3.1.5"
+    "js-yaml": "^4.3.2",
+    "undici": "^7.30.2",
+    "brace-expansion": "^5.0.13",
+    "fast-uri": "^3.1.9",
+    "minimatch": "^11.0.9"
   },
   "capabilities": {
     "untrustedWorkspaces": {

@@ -23,6 +23,16 @@ deciding it:
   gives one.
 - A Python runtime that does not report completeness yet behaves exactly as before.
 
+### Building from source
+
+- **Packaging and publishing now need Node 22.** The VSIX is built with `@vscode/vsce` 4
+  (was 3.9) and published to Open VSX with `ovsx` 1.4 (was 1.0). Both require Node 22 or
+  newer, which CI and `.nvmrc` already use. The extension itself is unchanged and still
+  supports VS Code 1.90 and later. See `docs/BUILDING.md`.
+- The upgrade clears the glob and minimatch advisories in the packaging tools. One picomatch
+  advisory has no fixed release yet. It affects only the build tools, never the installed
+  extension.
+
 ## 0.0.2 — pre-release (not published)
 
 Published on the Marketplace and Open VSX **pre-release channel**: install it with
