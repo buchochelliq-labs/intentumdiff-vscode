@@ -20,6 +20,7 @@ import {
   type ReviewSummary,
 } from "./reviewModel";
 import type { SemanticChange } from "./types";
+import { equivalenceProof, incompleteMessage, isEquivalentReview } from "./reviewCompleteness";
 
 export type ReviewDiffSurface = "native" | "panel";
 
@@ -355,6 +356,17 @@ function compactFileDescription(file: ReviewFile, summary: ReviewSummary): strin
   if (schema) {
     parts.push(schema);
   }
+  if (summary.incompleteCount > 0) {
+    // Core issue 252: never "clean" when core could not explain the change.
+    parts.push("incomplete review");
+  }
+  if (isEquivalentReview(file.diff)) {
+    const proof = equivalenceProof(file.diff);
+    parts.push(proof ? "equivalent" : "equivalent (style-only)");
+    if (proof) {
+      parts.push(`proof: ${proof}`);
+    }
+  }
   if (parts.length > 0) {
     return parts.join(" | ");
   }
@@ -373,6 +385,9 @@ function fileIcon(file: ReviewFile): vscode.ThemeIcon {
   }
   if ((file.diff?.changes?.length ?? 0) > 0) {
     return new vscode.ThemeIcon("diff", themeColor("intentumdiff.semanticChanges.rawChange"));
+  }
+  if (incompleteMessage(file.diff) !== undefined) {
+    return new vscode.ThemeIcon("warning", themeColor("intentumdiff.semanticChanges.incomplete"));
   }
   if (file.status === "skipped") {
     return new vscode.ThemeIcon("circle-slash", themeColor("intentumdiff.semanticChanges.muted"));
@@ -438,6 +453,9 @@ function entryIcon(entry: ReviewEntry): vscode.ThemeIcon {
       entry.severity === "error" ? "error" : "warning",
       themeColor("intentumdiff.semanticChanges.guardrail"),
     );
+  }
+  if (entry.kind === "incomplete") {
+    return new vscode.ThemeIcon("warning", themeColor("intentumdiff.semanticChanges.incomplete"));
   }
   if (entry.kind === "schema-status") {
     return new vscode.ThemeIcon("database", themeColor("intentumdiff.semanticChanges.schemaStatus"));

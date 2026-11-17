@@ -69,6 +69,7 @@
     "onCommand:intentumdiff.collapseSemanticDiffContext",
     "onCommand:intentumdiff.clearReview",
     "onCommand:intentumdiff.revealActiveFileInReview",
+    "onCommand:intentumdiff.reportIncompleteReview",
     "onView:intentumdiff.dashboard",
     "onView:intentumdiff.review",
     "onView:intentumdiff.semanticChanges"
@@ -284,6 +285,16 @@
           "highContrast": "#b8c4d6"
         }
       }
+,
+      {
+        "id": "intentumdiff.semanticChanges.incomplete",
+        "description": "Color for incomplete reviews and lines IntentumDiff could not explain.",
+        "defaults": {
+          "dark": "editorWarning.foreground",
+          "light": "editorWarning.foreground",
+          "highContrast": "editorWarning.foreground"
+        }
+      }
     ],
     "commands": [
       {
@@ -463,6 +474,11 @@
       {
         "command": "intentumdiff.revealActiveFileInReview",
         "title": "IntentumDiff: Reveal Active File in Semantic Review"
+      },
+      {
+        "command": "intentumdiff.reportIncompleteReview",
+        "title": "IntentumDiff: Report Incomplete Review…",
+        "icon": "$(report)"
       }
     ],
     "viewsContainers": {
@@ -666,6 +682,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "intentumdiff.reportIncompleteReview",
+          "when": "(view == intentumdiff.review || view == intentumdiff.semanticChanges) && viewItem == intentumdiffReviewEntry.incomplete",
+          "group": "inline@0"
+        },
         {
           "command": "intentumdiff.openSemanticDiff",
           "when": "(view == intentumdiff.review || view == intentumdiff.semanticChanges) && viewItem =~ /intentumdiffReview/",
