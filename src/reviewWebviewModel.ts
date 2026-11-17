@@ -1892,7 +1892,7 @@ function reviewTabbedPages(model: ReviewPanelModel, stats: DiffStats): string {
         ${releaseNarrativeCard(model.releaseNarrative)}
         <section class="insight-card release-note-preview">
           <h3>Behavior changes</h3>
-          <ul>${releaseNoteItems(releaseNotes.behavior, "No behavior-facing changes detected.")}</ul>
+          <ul>${releaseNoteItems(releaseNotes.behavior, incompleteMessage(model.diff) ?? "No behavior-facing changes detected.")}</ul>
         </section>
         <section class="insight-card release-note-preview">
           <h3>Internal changes</h3>

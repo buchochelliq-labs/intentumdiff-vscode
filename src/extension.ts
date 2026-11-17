@@ -1023,7 +1023,11 @@ class PysdController implements vscode.Disposable {
       } finally {
         narrativeSource.dispose();
       }
-      const markdown = releaseNotesToMarkdown(notes, { title: `Release notes — ${filePayload.relativePath}`, narrative });
+      const markdown = releaseNotesToMarkdown(notes, {
+        title: `Release notes — ${filePayload.relativePath}`,
+        narrative,
+        incompleteMessage: incompleteMessage(model.diff),
+      });
       await vscode.env.clipboard.writeText(markdown);
       void vscode.window.showInformationMessage("IntentumDiff: release notes copied as Markdown.");
       return;

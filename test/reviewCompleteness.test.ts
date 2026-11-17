@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { diffToBaseDecorations, diffToModifiedDecorations, statusText, summarizeDiff } from "../src/mapper";
+import { buildReleaseNotes, releaseNotesToMarkdown } from "../src/releaseNotes";
 import {
   REPORT_COPY_ACTION,
   REPORT_OPEN_ACTION,
@@ -318,3 +319,15 @@ function htmlEscape(value: string): string {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
+
+test("incomplete review: release notes (tab and Markdown export) show core's message, never 'no behavior-facing changes'", () => {
+  const html = renderPanelHtml(buildReviewPanelModel(reviewFile(incompleteDiff()), OLD_TEXT, NEW_TEXT, "HEAD"), RENDER);
+  const notesPage = html.slice(html.indexOf('data-review-page="release-notes"'));
+  assert.ok(notesPage.includes(`<li class="release-note-empty">${htmlEscape(MESSAGE)}</li>`));
+  assert.doesNotMatch(notesPage, /No behavior-facing changes detected/u);
+  const markdown = releaseNotesToMarkdown(buildReleaseNotes(incompleteDiff()), { incompleteMessage: MESSAGE });
+  assert.ok(markdown.includes(`## Behavior changes\n- ${MESSAGE}`) || markdown.includes(MESSAGE));
+  assert.doesNotMatch(markdown, /No behavior-facing changes detected/u);
+  // Older wheels and complete reviews keep the old empty line.
+  assert.match(releaseNotesToMarkdown(buildReleaseNotes(legacyEmptyDiff())), /No behavior-facing changes detected/u);
+});
