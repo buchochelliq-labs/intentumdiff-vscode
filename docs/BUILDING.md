@@ -43,6 +43,25 @@ The historical inventory workflow (`release-media-manifest-gate.yml`) checks the
 
 ## VSIX packaging
 
+```bash
+npm run vsix      # compiles, then vsce package --pre-release
+```
+
+Packaging and publishing need **Node 22 or newer**: `@vscode/vsce` 4 and `ovsx` 1.4 both
+declare `engines.node >= 22` and are not supported on Node 20. Use the `.nvmrc` version
+(`nvm use`), as every workflow does. On Node 20, `npm ci` only warns (`EBADENGINE`) and nothing
+else stops you, so check `node -v` first. The extension's runtime target does not change:
+`engines.vscode` stays `^1.90.0`, and its host still runs Node 20.
+
+`vsce package` scans the files it packages for secrets and stops if it finds one. Do not
+pass `--allow-package-secrets` or `--allow-package-all-secrets` to get past it: remove the
+file or add it to `.vscodeignore`. `npx vsce ls` lists what would be packaged without
+building a VSIX.
+
+`publish.yml` publishes the reviewed VSIX that is already built, with
+`vsce publish --pre-release --packagePath` and `ovsx publish <file>`. `ovsx` takes the
+pre-release flag from the VSIX manifest and ignores `--pre-release` for a prepackaged file.
+
 The current generic VSIX includes the compiled extension and UI assets. It does not
 bundle a Python interpreter, native engine or parser component set. Configure an external
 Rust `intentumdiff-live-server` with matching verified components for real-runtime testing.

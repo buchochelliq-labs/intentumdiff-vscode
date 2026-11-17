@@ -319,7 +319,11 @@ jobs:
             exit 1
           fi
 
-          npx ovsx publish ./*.vsix --pre-release --skip-duplicate --pat "$OVSX_PAT"
+          # No --pre-release here: ovsx >= 1.4 treats it as a packaging option and ignores
+          # it (with a warning) for a prepackaged VSIX. The pre-release marker is already in
+          # the VSIX manifest from `vsce package --pre-release`, and the next step checks
+          # that Open VSX serves this version as a pre-release.
+          npx ovsx publish ./*.vsix --skip-duplicate --pat "$OVSX_PAT"
 
       - name: Verify Open VSX serves this version as a pre-release
         run: |
