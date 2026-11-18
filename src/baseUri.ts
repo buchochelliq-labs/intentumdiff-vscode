@@ -30,6 +30,31 @@ export function gitShowArgs(identity: BaseDocumentIdentity): string[] {
   return ["show", `${identity.ref}:${identity.relativePath}`];
 }
 
+/**
+ * The baseline-side path for a review of `relativePath` (the new, working-tree
+ * path). For an engine-reported rename/move (`old_filename` differs and
+ * `new_filename` is this path) the base must be read from the OLD path; a
+ * missing or unsafe old path falls back to `relativePath`.
+ */
+export function baseRelativePathFor(
+  relativePath: string,
+  diff?: { old_filename?: string | null; new_filename?: string | null },
+): string {
+  const oldPath = diff?.old_filename;
+  if (!oldPath || oldPath === relativePath) {
+    return relativePath;
+  }
+  if (diff?.new_filename && diff.new_filename !== relativePath) {
+    return relativePath;
+  }
+  try {
+    assertSafeRelativePath(oldPath);
+  } catch {
+    return relativePath;
+  }
+  return oldPath;
+}
+
 export function assertSafeGitRef(ref: string): void {
   if (!ref || ref.includes("\0") || ref.startsWith("-")) {
     throw new Error("Unsafe git ref for IntentumDiff base document");

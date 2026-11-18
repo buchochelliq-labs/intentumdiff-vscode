@@ -3,8 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "description": "Electron-first IntentumDiff standalone review shell with reusable web renderer.",
-  "main": "src/main.ts",
+  "main": "out/main.js",
   "scripts": {
+    "start": "npm run build:web && electron .",
     "test": "npm run build:web && node --test test/reviewShell.test.js",
     "build:web": "tsc -p tsconfig.json"
   },

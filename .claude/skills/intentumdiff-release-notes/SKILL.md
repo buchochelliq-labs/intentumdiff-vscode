@@ -30,15 +30,18 @@ source by default.
   restating the what**. Sources, in priority order: value change parsed from `text_diff`
   (`[-old][+new]`), node-type role (return→"changes the returned value", condition→"changes
   control flow", import→"changes a dependency", …), `NodeFacts` (no params / returns nothing /
-  stub body / async / generator), visibility, size. Guarantees a short honest baseline when no
+  stub body / async / generator), size. Guarantees a short honest baseline when no
   strong signal exists — never the platitude "may change runtime behavior" alone.
 - **risk** — `riskForContent(kind, contentClass)`: code → `behavior` (MEANINGFUL) /
   `internal` (REFACTORING, MOVED); non-code → `content`; style/noise → unrisked.
 
-**NodeFacts are the honest source.** Prefer `node.facts` (engine-emitted: `param_count`,
-`returns`, `body`, `is_async`, `is_generator`) over reverse-engineering the tree. A
-`def ccc(): pass` must read "no parameters; returns nothing; empty no-op body", not "takes a
-parameter" or "now available to callers." See `intentumdiff-engine` for NodeFacts.
+**NodeFacts are the only source.** Use `node.facts` (engine-emitted: `param_count`,
+`returns`, `body`, `is_async`, `is_generator`, …). The extension never reconstructs arity,
+visibility, body shape or body contents from the pruned tree or naming conventions (issue
+#132): when a fact is absent it is unknown and no claim is made. A `def ccc(): pass` with
+engine facts must read "no parameters; returns nothing; empty no-op body", not "takes a
+parameter" or "now available to callers". A needed fact the engine does not emit yet belongs
+in the core's NodeFacts schema, not in a host heuristic. See `intentumdiff-engine`.
 
 **Content-awareness:** gate all code framing on `contentClass === "code"`. On docs/config/data/
 text, drop "New public API", function nouns, and behavior claims (see `intentumdiff-vscode` →

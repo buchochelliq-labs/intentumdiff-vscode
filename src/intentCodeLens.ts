@@ -53,6 +53,10 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
   MOVED_CODE: { label: "Moved", icon: "arrow-swap", risk: "internal", show: true },
   IGNORED_STYLE: { label: "Style", icon: "paintcan", show: false },
   NOISE_SUPPRESSED: { label: "Noise", icon: "mute", show: false },
+  // Presentation-only bucket for an ungrouped change whose change_type the
+  // engine did not state in a form we know: shown (never dropped), but with NO
+  // risk — missing engine evidence stays unknown (issue 133).
+  UNCLASSIFIED: { label: "Unclassified", icon: "question", show: true },
 };
 
 export function categoryForKind(kind: string): IntentCategory | undefined {
@@ -223,6 +227,14 @@ export function groupWhy(group: ChangeGroup, changes: SemanticChange[]): string 
 }
 
 /** Map a raw change to a ChangeGroupKind when the engine emits no groups. */
+/**
+ * Display bucket for a change NO change_group owns. This is a fixed 1:1
+ * rendering of the engine's own `change_type` / `refactoring_kind` enums
+ * (presentation), not a semantic judgement: the host never inspects source or
+ * trees to decide. A change_type outside the engine enum (or missing) is
+ * UNCLASSIFIED — shown, with no derived risk — rather than assumed meaningful.
+ * See docs/ARCHITECTURE.md "Responsibility map".
+ */
 export function kindForChange(change: SemanticChange): string {
   if (change.refactoring_kind || change.change_type === "REFACTORING") {
     return "REFACTORING";
@@ -233,7 +245,10 @@ export function kindForChange(change: SemanticChange): string {
   if (change.change_type === "STYLE_ONLY") {
     return "IGNORED_STYLE";
   }
-  return "MEANINGFUL_CHANGE";
+  if (change.change_type === "ADDITION" || change.change_type === "DELETION" || change.change_type === "MODIFICATION") {
+    return "MEANINGFUL_CHANGE";
+  }
+  return "UNCLASSIFIED";
 }
 
 function changeWhy(change: SemanticChange): string {

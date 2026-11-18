@@ -73,7 +73,7 @@ export function script(): string {
       if (tag === "input" || tag === "textarea" || tag === "select") {
         return true;
       }
-      return target.isContentEditable || target.closest("textarea, input, select, [contenteditable='true'], button, a") !== null;
+      return target.isContentEditable || target.closest("textarea, input, select, [contenteditable='true'], [contenteditable='plaintext-only'], button, a") !== null;
     }
     function syncOverviewViewport() {
       const table = document.querySelector(".diff-table");
@@ -238,6 +238,9 @@ export function script(): string {
     }
     function highlightCell(cell) {
       if (typeof hljs === "undefined") return;
+      // Highlighting rebuilds the cell from textContent, which would turn the
+      // Unicode marker overlays into literal "U+XXXX" text: leave those cells.
+      if (cell.querySelector && cell.querySelector(".unicode-marker")) { cell.dataset.hlDone = "1"; return; }
       const text = cell.textContent || "";
       if (!text.trim()) { cell.dataset.hlDone = "1"; return; }
       const lang = (app && app.dataset.language) || "";
@@ -471,13 +474,32 @@ export function script(): string {
       const item = panel.querySelector('.asset-hotspot[data-asset-hotspot="' + ids[idx] + '"]');
       if (item && item.scrollIntoView) item.scrollIntoView({ block: "nearest" });
     }
-    // Inline editing of working-tree cells: strip highlight to plain text on
-    // focus, mark the hunk dirty on input, re-highlight on blur, Esc cancels.
+    // Inline editing of working-tree cells. The rendered cell is decorated
+    // (syntax highlight, Unicode marker overlays), so it is never the source of
+    // truth: the exact reviewed text lives in data-source and an edit model
+    // (data-edited-source) records what the user typed. Editing starts from the
+    // raw source; leaving an untouched cell restores the decorated rendering;
+    // Esc discards the edit.
+    const renderedCellHtml = new WeakMap();
+    function reviewedCellSource(cell) {
+      try { return JSON.parse(cell.getAttribute("data-source") || '""'); } catch { return ""; }
+    }
+    function cellSource(cell) {
+      if (cell.dataset.editedSource !== undefined) {
+        try { return JSON.parse(cell.dataset.editedSource); } catch { /* fall through */ }
+      }
+      return reviewedCellSource(cell);
+    }
+    function restoreRenderedCell(cell) {
+      if (renderedCellHtml.has(cell)) cell.innerHTML = renderedCellHtml.get(cell);
+    }
     document.addEventListener("focusin", (event) => {
       const cell = event.target.closest && event.target.closest("[data-hunk-edit-cell]");
       if (!cell || cell.dataset.editing === "1") return;
-      cell.dataset.original = cell.textContent || "";
-      cell.textContent = cell.dataset.original;
+      if (cell.dataset.editedSource === undefined && !renderedCellHtml.has(cell)) {
+        renderedCellHtml.set(cell, cell.innerHTML);
+      }
+      cell.textContent = cellSource(cell);
       cell.classList.remove("hljs");
       cell.dataset.editing = "1";
     });
@@ -499,12 +521,22 @@ export function script(): string {
       }
       const cell = event.target.closest && event.target.closest("[data-hunk-edit-cell]");
       if (!cell) return;
+      const text = cell.textContent || "";
+      if (text === reviewedCellSource(cell)) {
+        delete cell.dataset.editedSource;
+      } else {
+        cell.dataset.editedSource = JSON.stringify(text);
+      }
       markHunkDirty(cell.getAttribute("data-hunk-id"));
     });
     document.addEventListener("focusout", (event) => {
       const cell = event.target.closest && event.target.closest("[data-hunk-edit-cell]");
       if (!cell) return;
       cell.dataset.editing = "";
+      if (cell.dataset.editedSource === undefined) {
+        restoreRenderedCell(cell);
+        return;
+      }
       cell.dataset.hlDone = "";
       highlightCell(cell);
     });
@@ -512,11 +544,10 @@ export function script(): string {
       const cell = event.target.closest && event.target.closest("[data-hunk-edit-cell]");
       if (!cell || event.key !== "Escape") return;
       event.preventDefault();
-      cell.textContent = cell.dataset.original || "";
+      delete cell.dataset.editedSource;
       cell.dataset.editing = "";
-      cell.blur();
-      cell.dataset.hlDone = "";
-      highlightCell(cell);
+      restoreRenderedCell(cell);
+      if (cell.blur) cell.blur();
     }, true);
     // Keyboard hotspot navigation (only while focus is inside the hotspot panel,
     // so the blend / speed range sliders keep their native arrow behaviour).
@@ -663,11 +694,12 @@ export function script(): string {
         const hunkId = button.getAttribute("data-hunk-id");
         const cells = document.querySelectorAll('[data-hunk-edit-cell][data-hunk-id="' + hunkId + '"]');
         if (!cells.length || !payload || !payload.hunk) return;
-        const editedLines = Array.prototype.map.call(cells, (cell) => cell.textContent || "");
+        // Serialize the edit model, not the decorated DOM: untouched cells post
+        // their exact reviewed source. Embedded newlines (multiline paste) stay
+        // in the line and the host splits them; the reviewed range
+        // (newStartLine..newEndLine) is what the host verifies and replaces.
+        const editedLines = Array.prototype.map.call(cells, (cell) => cellSource(cell));
         payload.hunk.newLines = editedLines;
-        if (payload.hunk.newStartLine !== undefined) {
-          payload.hunk.newEndLine = payload.hunk.newStartLine + Math.max(editedLines.length - 1, 0);
-        }
         payload.actionKind = "applyHunk";
       }
       vscode.postMessage({ command, payload });

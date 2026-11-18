@@ -16,7 +16,5 @@ async function createWindow(): Promise<void> {
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderReviewShell(modelFromArtifact(artifact)))}`);
 }
 
-void app.whenReady().then(createWindow);
-
-
+// Register initial startup exactly once: each registration opens a window.
 void app.whenReady().then(createWindow);

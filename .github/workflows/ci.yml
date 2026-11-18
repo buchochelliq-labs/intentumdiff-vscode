@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "release/v0.0.2-rc"]
+    branches: ["main", "release/v0.0.2-rc", "release/v0.0.3-rc"]
   pull_request:
   workflow_dispatch:
 
@@ -29,6 +29,8 @@ jobs:
         run: npm ci
       - name: Lint (tsc --noEmit)
         run: npm run lint
+      - name: Typecheck against the minimum supported VS Code API
+        run: npm run lint:min-engine
       - name: Tests
         run: npm run test
 

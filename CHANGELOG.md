@@ -1,6 +1,50 @@
 # Changelog
 
-## 0.0.2 — pre-release (not published)
+## 0.0.3 — pre-release (unreleased)
+
+Ships on the Marketplace and Open VSX **pre-release channel**, like 0.0.2: install it with
+"Switch to Pre-Release Version" on the extension page.
+
+### Which engine runs your reviews
+
+- **The Python runtime is still the default on every platform.** Install it with
+  `pip install --pre intentumdiff-python` (0.0.3b1 is a pre-release).
+- 0.0.3 publishes **no native binaries**. The native Rust runtime (`intentumdiff-live-server`)
+  can be built from source and selected with `intentumdiff.liveServer.engine: native`;
+  `auto` does not select it.
+
+### Incomplete and equivalent reviews
+
+The engine now says how complete each review is. The extension shows that instead of
+deciding it:
+
+- **Incomplete reviews are never shown as "no changes".** Sometimes the engine finds that
+  the old and new file differ but cannot explain the change. The review panel, the Semantic
+  Changes tree, the semantic-only diff and the status bar tooltip then show the engine's own
+  message word for word. The lines it could not explain are marked as "changed but
+  unexplained" in the native diff editor, using their line positions only.
+- **Report a bug, with a preview first.** "Report bug…" in the review panel, the inline
+  action on the tree entry, or *IntentumDiff: Report Incomplete Review…* shows the engine's
+  issue title and body in a dialog. The GitHub issue opens only when you choose "Open GitHub
+  issue". If the link holds a shortened report, the dialog says so and offers "Copy full
+  report" to copy the whole text. Nothing is sent automatically. The report holds only the
+  text the engine wrote: no file names, paths or source code.
+- **Equivalent changes** (for example JSON keys that were only reordered) are shown as
+  "Equivalent (style-only)", with the name of the rule that proved them when the engine
+  gives one.
+- A Python runtime that does not report completeness yet behaves exactly as before.
+
+### Building from source
+
+- **Packaging and publishing now need Node 22.** The VSIX is built with `@vscode/vsce` 4
+  (was 3.9) and published to Open VSX with `ovsx` 1.4 (was 1.0). Both require Node 22 or
+  newer, which CI and `.nvmrc` already use. The extension itself is unchanged and still
+  supports VS Code 1.90 and later. See `docs/BUILDING.md`.
+- The upgrade clears the glob and minimatch advisories in the packaging tools. One picomatch
+  advisory has no fixed release yet. It affects only the build tools, never the installed
+  extension.
+
+## 0.0.2 — 2026-11-05 (pre-release)
 
 Published on the Marketplace and Open VSX **pre-release channel**: install it with
 "Switch to Pre-Release Version" on the extension page. It stays a pre-release until it has
@@ -13,7 +57,7 @@ does not let a pre-release version be re-published as stable.
   auto`). Install it with `pip install --pre intentumdiff-python` (0.0.2b2 is a pre-release).
   A native Rust runtime (`intentumdiff-live-server`) exists, but 0.0.2 publishes no native
   release, so `auto` does not select it. To use a native build anyway, set `intentumdiff.liveServer.engine` to
-  `native`. Published native releases are planned for 0.0.3.
+  `native`.
 - With `auto` or `python`, a runtime installed in the workspace's `.venv` is found without
   adding it to `PATH`.
 - Both runtimes now use the same Rust engine for every semantic judgement, so the extension,

@@ -6,6 +6,12 @@ import type {
   SemanticChange,
   SemanticDiff,
 } from "./types";
+import {
+  equivalenceProof,
+  incompleteMessage,
+  reviewCompleteness,
+  unexplainedDecorations,
+} from "./reviewCompleteness";
 
 export function summarizeDiff(diff: SemanticDiff): DiffSummary {
   const violations = diff.guardrail_violations ?? [];
@@ -14,9 +20,25 @@ export function summarizeDiff(diff: SemanticDiff): DiffSummary {
     guardrailCount: violations.length,
     immutableCount: violations.filter((item) => item.severity === "immutable").length,
     importantCount: violations.filter((item) => item.severity === "important").length,
-    styleOnly: diff.is_style_only === true,
+    styleOnly: diff.is_style_only === true || reviewCompleteness(diff) === "equivalent",
     hasParseErrors: (diff.parse_errors?.length ?? 0) > 0,
     language: diff.language,
+    ...completenessSummary(diff),
+  };
+}
+
+/** Completeness keys only when core sent a verdict, so older DTOs summarise exactly as before. */
+function completenessSummary(diff: SemanticDiff): Pick<DiffSummary, "completeness" | "incompleteMessage" | "equivalenceProof"> {
+  const completeness = reviewCompleteness(diff);
+  if (!completeness) {
+    return {};
+  }
+  const message = incompleteMessage(diff);
+  const proof = equivalenceProof(diff);
+  return {
+    completeness,
+    ...(message !== undefined ? { incompleteMessage: message } : {}),
+    ...(proof !== undefined ? { equivalenceProof: proof } : {}),
   };
 }
 
@@ -112,8 +134,9 @@ export function reviewTargetForChange(change: SemanticChange): SemanticChangeTar
 
 export function diffToModifiedDecorations(diff: SemanticDiff): DecorationLike[] {
   const decorations: DecorationLike[] = [];
-  for (const change of diff.changes ?? []) {
-    if (isPresentationNoiseChange(change)) {
+  const engineNoise = engineNoiseChangeIndices(diff);
+  for (const [index, change] of (diff.changes ?? []).entries()) {
+    if (engineNoise.has(index)) {
       continue;
     }
     if (change.change_type === "DELETION") {
@@ -137,6 +160,7 @@ export function diffToModifiedDecorations(diff: SemanticDiff): DecorationLike[] 
       }
     }
   }
+  decorations.push(...unexplainedDecorations(diff, "new"));
   return decorations;
 }
 
@@ -253,8 +277,9 @@ function isWordCharacter(value: string): boolean {
 
 export function diffToBaseDecorations(diff: SemanticDiff): DecorationLike[] {
   const decorations: DecorationLike[] = [];
-  for (const change of diff.changes ?? []) {
-    if (isPresentationNoiseChange(change)) {
+  const engineNoise = engineNoiseChangeIndices(diff);
+  for (const [index, change] of (diff.changes ?? []).entries()) {
+    if (engineNoise.has(index)) {
       continue;
     }
     if (change.change_type !== "DELETION") {
@@ -272,6 +297,7 @@ export function diffToBaseDecorations(diff: SemanticDiff): DecorationLike[] {
       isComment: isCommentChange(change),
     });
   }
+  decorations.push(...unexplainedDecorations(diff, "old"));
   return decorations;
 }
 
@@ -292,6 +318,13 @@ export function statusText(diff: SemanticDiff): string {
   const hotspotCount = fuelHotspots(diff).length;
   if (hotspotCount > 0) {
     return `IntentumDiff: ${hotspotCount} fuel warning${hotspotCount === 1 ? "" : "s"}`;
+  }
+  if (summary.incompleteMessage !== undefined) {
+    // Never "clean": core could not explain a source delta (core issue 252).
+    return "IntentumDiff: incomplete review";
+  }
+  if (summary.completeness === "equivalent") {
+    return "IntentumDiff: equivalent (style-only)";
   }
   if (summary.styleOnly) {
     return "IntentumDiff: style-only";
@@ -346,43 +379,29 @@ function isCommentNode(node: SemanticChange["old_node"]): boolean {
   return nodeType === "comment" || nodeType.endsWith("_comment") || nodeType.includes("comment");
 }
 
-export function isPresentationNoiseChange(change: SemanticChange): boolean {
-  if (change.change_type !== "MODIFICATION" || !change.old_node || !change.new_node) {
-    return false;
+/**
+ * Indices of changes the ENGINE classified as noise: owned by a
+ * `NOISE_SUPPRESSED` change group and by no other group. The extension may hide
+ * these from editor decorations (the tree still lists them as suppressed
+ * evidence). It never decides noise itself by comparing node trees (issue 131).
+ * Out-of-range indices are ignored (index-space contract).
+ */
+export function engineNoiseChangeIndices(diff: SemanticDiff): Set<number> {
+  const changeCount = diff.changes?.length ?? 0;
+  const noise = new Set<number>();
+  const shown = new Set<number>();
+  for (const group of diff.change_groups ?? []) {
+    const target = group.kind === "NOISE_SUPPRESSED" ? noise : shown;
+    for (const index of group.raw_change_indices ?? []) {
+      if (Number.isInteger(index) && index >= 0 && index < changeCount) {
+        target.add(index);
+      }
+    }
   }
-  return sameSemanticContentIgnoringArrayIndex(change.old_node, change.new_node);
-}
-
-function sameSemanticContentIgnoringArrayIndex(
-  oldNode: NonNullable<SemanticChange["old_node"]>,
-  newNode: NonNullable<SemanticChange["new_node"]>,
-): boolean {
-  if (oldNode.node_type !== newNode.node_type) {
-    return false;
+  for (const index of shown) {
+    noise.delete(index);
   }
-  if (!sameLabelIgnoringArrayIndex(oldNode.label, newNode.label)) {
-    return false;
-  }
-  const oldChildren = oldNode.children ?? [];
-  const newChildren = newNode.children ?? [];
-  if (oldChildren.length !== newChildren.length) {
-    return false;
-  }
-  return oldChildren.every((oldChild, index) => {
-    const newChild = newChildren[index];
-    return newChild ? sameSemanticContentIgnoringArrayIndex(oldChild, newChild) : false;
-  });
-}
-
-function sameLabelIgnoringArrayIndex(oldLabel: string | undefined, newLabel: string | undefined): boolean {
-  if (oldLabel === newLabel) {
-    return true;
-  }
-  return isArrayIndexLabel(oldLabel) && isArrayIndexLabel(newLabel);
-}
-
-function isArrayIndexLabel(label: string | undefined): boolean {
-  return label !== undefined && /^\[\d+\]$/u.test(label);
+  return noise;
 }
 
 const COMPACT_WRAPPER_LANGUAGES = new Set(["javascript", "typescript", "tsx"]);

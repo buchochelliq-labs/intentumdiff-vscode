@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  arity,
-  bodyFact,
-  bodyKind,
   renderFactDelta,
   gitignoreWhat,
   explainChange,
@@ -13,7 +10,6 @@ import {
   lineSpan,
   typeInfo,
   valueChange,
-  visibility,
   whatForChange,
 } from "../src/intentExplain";
 import type { ChangeGroup, SemanticChange, SemanticNode } from "../src/types";
@@ -86,16 +82,16 @@ test("explainChange describes an addition without over-claiming 'public API'", (
   assert.equal(explanation.risk, "behavior");
 });
 
-test("an added no-op stub (def ccc(): pass) is called out honestly", () => {
-  const stub = fn("ccc", [{ node_type: "pass_statement", label: "pass", position: null }], 2);
+test("an added no-op stub (def ccc(): pass) is called out honestly from the engine body fact", () => {
+  const stub = { ...fn("ccc", [{ node_type: "pass_statement", label: "pass", position: null }], 2), facts: { body: "stub" } };
   const change: SemanticChange = { change_type: "ADDITION", new_node: stub, old_node: null };
-  assert.equal(explainChange(change).why, "Empty stub — no implementation yet (just `pass`).");
+  assert.equal(explainChange(change).why, "Empty stub — no implementation yet.");
 });
 
-test("an added substantive function surfaces a concrete body fact", () => {
-  const body = fn("add", [{ node_type: "return_statement", label: "return a + b", position: null }], 5);
+test("an added substantive function surfaces engine facts, never mined body tokens", () => {
+  const body = { ...fn("add", [{ node_type: "return_statement", label: "return a + b", position: null }], 5), facts: { body: "substantive", returns: "value" } };
   const change: SemanticChange = { change_type: "ADDITION", new_node: body, old_node: null };
-  assert.equal(explainChange(change).why, "Public — returns `a + b`, 5 lines.");
+  assert.equal(explainChange(change).why, "Returns a value, 5 lines.");
 });
 
 test("valueChange extracts the before/after from a [-old][+new] char diff", () => {
@@ -187,59 +183,10 @@ test("lineSpan counts inclusive source lines, or undefined without a position", 
   assert.equal(lineSpan({}), undefined);
 });
 
-test("arity counts params from a wrapper, flat children, or gives up (undefined)", () => {
-  const wrapped: SemanticNode = {
-    node_type: "function_definition",
-    children: [{ node_type: "parameters", children: [{ node_type: "identifier", label: "a" }, { node_type: "identifier", label: "b" }] }],
-  };
-  assert.equal(arity(wrapped), 2);
-  const flat: SemanticNode = { node_type: "function_definition", children: [{ node_type: "parameter", label: "x" }] };
-  assert.equal(arity(flat), 1);
-  assert.equal(arity({ node_type: "function_definition" }), undefined);
-});
-
-test("arity is 0 for an empty parameter list — never counts the wrapper itself (def ccc())", () => {
-  const empty: SemanticNode = { node_type: "function_definition", children: [{ node_type: "parameters", children: [] }] };
-  assert.equal(arity(empty), 0);
-  // Realistic `def ccc(): pass` shape: name + empty params + body.
-  const ccc: SemanticNode = {
-    node_type: "function_definition",
-    children: [
-      { node_type: "identifier", label: "ccc" },
-      { node_type: "parameters", children: [] },
-      { node_type: "block", children: [{ node_type: "pass_statement", label: "pass" }] },
-    ],
-  };
-  assert.equal(arity(ccc), 0, "def ccc() takes no parameters");
-});
-
 test("typeInfo returns the LSP type only when present", () => {
   assert.equal(typeInfo({ type_info: "str | None" }), "str | None");
   assert.equal(typeInfo({ type_info: null }), undefined);
   assert.equal(typeInfo({}), undefined);
-});
-
-test("visibility reads naming conventions and stays undefined for ordinary names", () => {
-  assert.equal(visibility("_helper"), "internal");
-  assert.equal(visibility("__init__"), "dunder");
-  assert.equal(visibility("MAX_SIZE"), "constant");
-  assert.equal(visibility("calculate"), undefined);
-  assert.equal(visibility(""), undefined);
-});
-
-test("bodyKind identifies stubs and substance, undefined when unsure", () => {
-  assert.equal(bodyKind(fn("s", [{ node_type: "pass_statement", label: "pass" }])), "stub");
-  assert.equal(bodyKind(fn("e", [{ node_type: "ellipsis", label: "..." }])), "stub");
-  assert.equal(bodyKind(fn("d", [{ node_type: "expression_statement", label: "\"docs\"", children: [{ node_type: "string", label: "\"docs\"" }] }])), "stub");
-  assert.equal(bodyKind(fn("r", [{ node_type: "return_statement", label: "return 1" }])), "substantive");
-  assert.equal(bodyKind(node("x", "variable_declaration")), undefined, "non-function → undefined");
-  assert.equal(bodyKind({ node_type: "function_definition" }), undefined, "no identifiable body → undefined");
-});
-
-test("bodyFact mines a return expression or first call, else undefined", () => {
-  assert.equal(bodyFact(fn("r", [{ node_type: "return_statement", label: "return a + b" }])), "returns `a + b`");
-  assert.equal(bodyFact(fn("c", [{ node_type: "call", label: "charge(x)" }])), "calls `charge()`");
-  assert.equal(bodyFact(fn("empty", [])), undefined);
 });
 
 test("graceful degradation: a bare node still yields a clean what + non-empty why and never throws", () => {
@@ -250,13 +197,13 @@ test("graceful degradation: a bare node still yields a clean what + non-empty wh
 });
 
 test("extractFacts derives a privacy-safe fact object (structure + signature, no body)", () => {
-  const stub = fn("ccc", [{ node_type: "pass_statement", label: "pass" }], 2);
+  const stub = { ...fn("ccc", [{ node_type: "pass_statement", label: "pass" }], 2), facts: { body: "stub" } };
   const facts = extractFacts({ change_type: "ADDITION", new_node: stub, old_node: null });
   assert.equal(facts.changeType, "ADDITION");
   assert.equal(facts.symbolKind, "function");
   assert.equal(facts.name, "ccc");
   assert.equal(facts.bodyKind, "stub");
-  assert.equal(facts.stubSentinel, "pass");
+  assert.equal(facts.stubSentinel, undefined, "the engine emits no sentinel fact, so none is named");
   assert.equal(facts.lineSpan, 2);
 });
 
@@ -356,9 +303,11 @@ test("docs and data content changes read as documentation / data, not code", () 
   assert.equal(explainChange(docChange, undefined, "docs").risk, "content");
 });
 
-test("Rust todo!() body is detected as a stub across languages", () => {
-  const stub = fn("charge", [{ node_type: "macro_invocation", label: "todo!()", position: null }], 2);
-  assert.equal(bodyKind(stub), "stub");
+test("a Rust todo!() body reads as a stub only when the engine says so", () => {
+  const tree = fn("charge", [{ node_type: "macro_invocation", label: "todo!()", position: null }], 2);
+  const add = (node: SemanticNode): SemanticChange => ({ change_type: "ADDITION", new_node: node, old_node: null });
+  assert.equal(extractFacts(add(tree)).bodyKind, undefined, "no engine body fact: unknown");
+  assert.equal(extractFacts(add({ ...tree, facts: { body: "stub" } })).bodyKind, "stub");
 });
 
 test("gitignore changes read as human review wording, per verb (#58)", () => {

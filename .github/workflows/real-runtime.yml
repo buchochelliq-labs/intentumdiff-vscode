@@ -65,10 +65,27 @@ jobs:
       matrix:
         runtime: [python, native]
         capture: [capabilities, languages-0, languages-1, languages-2, languages-3]
+        # Every leg runs the current stable pin. The min-engine legs run the
+        # oldest VS Code that package.json engines.vscode claims, so the
+        # manifest's minimum is tested rather than assumed (issue 137). The
+        # distinct `profile` value makes them new legs instead of extending
+        # the python/native capabilities legs.
+        profile: [current]
+        vscode: ["1.138.0"]
+        include:
+          - runtime: python
+            capture: capabilities
+            profile: min-engine
+            vscode: "1.90.0"
+          - runtime: native
+            capture: capabilities
+            profile: min-engine
+            vscode: "1.90.0"
     env:
       INTENTUMDIFF_ENFORCE_RUST_ONLY_ENGINE: "1"
       INTENTUMDIFF_TEST_RUNTIME_KIND: ${{ matrix.runtime }}
       INTENTUMDIFF_CAPTURE_SET: ${{ matrix.capture }}
+      INTENTUMDIFF_TEST_VSCODE_VERSION: ${{ matrix.vscode }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -79,7 +96,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      # Python 110e793 0.0.2b2 release-profile wheel (CI run 41790266216; Core 726fd07). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
+      # Python 99aeb3e (python #346) 0.0.3b1 release-profile wheel (CI run 44279129426; Core 1c4bdbc). All four full platform suites remain a release gate. Reuse the tested wheel and verified Wasm components; missing artifacts fail closed.
       - name: Download and verify reviewed candidate wheel
         if: matrix.runtime == 'python'
         env:
@@ -87,7 +104,7 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_wheel.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/13306565586/zip > .candidate-download/wheel.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-python/actions/artifacts/14421310046/zip > .candidate-download/wheel.zip
           python scripts/verify_candidate_wheel.py .candidate-download/wheel.zip .candidate-wheels
       - name: Install external candidate wheel
         if: matrix.runtime == 'python'
@@ -103,7 +120,7 @@ jobs:
               for key in ('python_commit', 'core_commit', 'wheel_sha256', 'artifact_id'):
                   env.write(f"INTENTUMDIFF_TEST_{key.upper()}={identity[key]}\n")
           PY
-      # Native release head 235cf4b (live-server #31, Core 726fd07): exact tested binary with the same immutable Python 110e793 (0.0.2b2) wheel and parser components.
+      # Native release head 34d68b7 (live-server #40, native CI run 44297349879, Core 1c4bdbc): exact tested binary with the same immutable Python 99aeb3e (0.0.3b1) wheel and parser components.
       - name: Download and verify native candidate
         if: matrix.runtime == 'native'
         env:
@@ -111,13 +128,13 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_verify_candidate_native.py
           mkdir .candidate-download
-          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/13308991709/zip > .candidate-download/native.zip
+          gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/14424322939/zip > .candidate-download/native.zip
           python scripts/verify_candidate_native.py .candidate-download/native.zip .candidate-native \
-            --expected-archive-sha256 e7b2f2f54ad589ad53a719c844e49ebe5f8162d48aae66d72ba9c9a926646f6b \
-            --expected-server-commit 235cf4bdd789aefc2b9eaf0a76b465ccec14742a \
-            --expected-core-commit 726fd07c77a83d2554d3eca68b6469e9461b87bc
+            --expected-archive-sha256 006be23f33b59e7f73d1569fa04b8cd5602be838c37eec516403cf0e305a9cac \
+            --expected-server-commit 34d68b78271f5170394b4f538f00ca0bf00a8d30 \
+            --expected-core-commit 1c4bdbc5dfbe6e738b3d70d8964e7f148d711821
           echo "INTENTUMDIFF_TEST_CLI=$PWD/.candidate-native/intentumdiff-live-server" >> "$GITHUB_ENV"
-          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=13308991709" >> "$GITHUB_ENV"
+          echo "INTENTUMDIFF_TEST_NATIVE_ARTIFACT_ID=14424322939" >> "$GITHUB_ENV"
           python - <<'PYTHON'
           import json, os
           from pathlib import Path
@@ -159,7 +176,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}
+          name: real-runtime-${{ matrix.runtime }}-${{ matrix.capture }}-${{ matrix.profile }}
           include-hidden-files: true
           path: |
             artifacts/real-runtime/

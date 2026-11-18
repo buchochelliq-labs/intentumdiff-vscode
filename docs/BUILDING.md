@@ -1,15 +1,18 @@
 # Building intentumdiff-vscode
 
-Toolchain: **Node 20** (see `.nvmrc`). This is not a preference: it is the Node the
-VS Code 1.90 extension host provides, and `engines.vscode: ^1.90.0` promises to
-support that host. CI pins the same version explicitly in the workflows.
+Toolchain policy (one source of truth, matching CI): build and test with **Node 22**
+(`.nvmrc`; every workflow pins `node-version: 22`). That is separate from the **runtime**
+target: the shipped JavaScript must run in the extension host of the oldest supported VS Code
+(`engines.vscode: ^1.90.0`, whose host is Node 20). That target is enforced by
+`@types/node` ^20 in `package.json` and by `npm run lint:min-engine` (no VS Code API newer
+than the engines floor), not by the build Node version.
 
 ## Extension
 
 ```bash
 npm ci
 npm run lint      # tsc -p ./ --noEmit
-npm run test      # compiles then runs the node:test suite (260 tests)
+npm run test      # compiles then runs the node:test suite
 ```
 
 ## Review shell
@@ -18,7 +21,12 @@ npm run test      # compiles then runs the node:test suite (260 tests)
 cd review-shell
 npm ci
 npm run test      # builds (tsc) then runs its suite
+npm start         # builds, then launches Electron on the compiled out/main.js
 ```
+
+`package.json` `main` is the compiled CommonJS entrypoint `out/main.js` (what `build:web`
+emits); the shell registers its initial window exactly once on `app.whenReady()`. Open a
+review artifact with `npm start -- --artifact=<path/to/review.json>`.
 
 (Its tsconfig pins `typeRoots` locally so the extension's `@types` don't leak into the nested
 package.)
@@ -35,10 +43,30 @@ The historical inventory workflow (`release-media-manifest-gate.yml`) checks the
 
 ## VSIX packaging
 
+```bash
+npm run vsix      # compiles, then vsce package --pre-release
+```
+
+Packaging and publishing need **Node 22 or newer**: `@vscode/vsce` 4 and `ovsx` 1.4 both
+declare `engines.node >= 22` and are not supported on Node 20. Use the `.nvmrc` version
+(`nvm use`), as every workflow does. On Node 20, `npm ci` only warns (`EBADENGINE`) and nothing
+else stops you, so check `node -v` first. The extension's runtime target does not change:
+`engines.vscode` stays `^1.90.0`, and its host still runs Node 20.
+
+`vsce package` scans the files it packages for secrets and stops if it finds one. Do not
+pass `--allow-package-secrets` or `--allow-package-all-secrets` to get past it: remove the
+file or add it to `.vscodeignore`. `npx vsce ls` lists what would be packaged without
+building a VSIX.
+
+`publish.yml` publishes the reviewed VSIX that is already built, with
+`vsce publish --pre-release --packagePath` and `ovsx publish <file>`. `ovsx` takes the
+pre-release flag from the VSIX manifest and ignores `--pre-release` for a prepackaged file.
+
 The current generic VSIX includes the compiled extension and UI assets. It does not
 bundle a Python interpreter, native engine or parser component set. Configure an external
 Rust `intentumdiff-live-server` with matching verified components for real-runtime testing.
-Python transport is an explicit compatibility mode; runtime bundling is separate work.
+With no bundled server, `auto` selects the Python runtime on every platform (see
+`docs/ARCHITECTURE.md` "Topology"); runtime bundling is separate work.
 
 ## Standalone integration runner
 
@@ -147,19 +175,19 @@ still need dedicated interaction evidence.
 
 ## Native runtime candidate
 
-The current Linux x64 test artifact comes from [native-server run 41802218429](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/41802218429)
-(release head `235cf4b`, Core `726fd07`), the same candidate the packaged-VSIX acceptance
-gate tests. It is a CI candidate, not a published release, so 0.0.2's `auto` engine does
+The current Linux x64 test artifact comes from [native-server run 44297349879](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/44297349879)
+(release head `34d68b7`, live-server #40, Core `1c4bdbc`), the same candidate the packaged-VSIX acceptance
+gate tests. It is a CI candidate, not a published release, so the `auto` engine does
 not select it; set `intentumdiff.liveServer.engine` to `native` to use it. Run these commands from this checkout
 with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
 Python is used here to verify the download, not to run the extension's engine.
 
 ```sh
-gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/13308991709/zip > native-candidate.zip
+gh api /repos/buchochelliq-labs/intentumdiff-live-server/actions/artifacts/14424322939/zip > native-candidate.zip
 python3 scripts/verify_candidate_native.py native-candidate.zip native-runtime \
-  --expected-archive-sha256 e7b2f2f54ad589ad53a719c844e49ebe5f8162d48aae66d72ba9c9a926646f6b \
-  --expected-server-commit 235cf4bdd789aefc2b9eaf0a76b465ccec14742a \
-  --expected-core-commit 726fd07c77a83d2554d3eca68b6469e9461b87bc
+  --expected-archive-sha256 006be23f33b59e7f73d1569fa04b8cd5602be838c37eec516403cf0e305a9cac \
+  --expected-server-commit 34d68b78271f5170394b4f538f00ca0bf00a8d30 \
+  --expected-core-commit 1c4bdbc5dfbe6e738b3d70d8964e7f148d711821
 export PATH="$PWD/native-runtime:$PATH"
 ```
 

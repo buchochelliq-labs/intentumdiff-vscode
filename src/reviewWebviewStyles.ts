@@ -240,6 +240,9 @@ export function styles(): string {
     .diff-table { font-family:var(--vscode-editor-font-family, Consolas, monospace); font-size:12px; overflow:auto; max-height:72vh; min-height:360px; padding-right:22px; background:var(--diff-editor-bg); }
     .diff-hunk { display:grid; grid-template-columns:var(--diff-grid); align-items:center; min-width:0; border-top:1px solid rgba(79,214,255,.28); border-bottom:1px solid rgba(79,214,255,.18); background:linear-gradient(90deg,rgba(79,214,255,.12),rgba(181,140,255,.09)); color:var(--bright-fg); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
     .fallback-notice { grid-column:1 / -1; margin:0; padding:10px 12px; border:1px solid var(--vscode-editorWarning-foreground); color:var(--vscode-foreground); background:var(--vscode-editor-background); }
+    .incomplete-notice { grid-column:1 / -1; display:flex; align-items:flex-start; gap:12px; margin:0; padding:10px 12px; border:1px dashed var(--vscode-editorWarning-foreground); color:var(--vscode-foreground); background:var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background)); font-family:var(--vscode-font-family); }
+    .incomplete-notice p { flex:1 1 auto; margin:0; overflow-wrap:anywhere; }
+    .incomplete-notice strong { color:var(--vscode-editorWarning-foreground); }
     .diff-hunk strong { color:var(--bright-fg); }
     .hunk-title { grid-column:3; min-width:0; display:flex; align-items:center; gap:8px; padding:7px 10px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
     .hunk-title small { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--muted); text-transform:none; letter-spacing:0; }
@@ -271,9 +274,9 @@ export function styles(): string {
     .diff-table .hljs-meta,.diff-table .hljs-doctag { color:var(--vscode-charts-blue); }
     .diff-table .hljs-emphasis { font-style:italic; }
     .diff-table .hljs-strong { font-weight:700; }
-    .diff-table code.new-code[contenteditable="true"] { cursor:text; outline:none; }
-    .diff-table code.new-code[contenteditable="true"]:hover { box-shadow:inset 3px 0 0 var(--diff-inserted-strip), inset 0 0 0 1px var(--soft-line); }
-    .diff-table code.new-code[contenteditable="true"]:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:-1px; white-space:pre; background:var(--vscode-editor-background,var(--diff-editor-bg)); }
+    .diff-table code.new-code[data-hunk-edit-cell] { cursor:text; outline:none; }
+    .diff-table code.new-code[data-hunk-edit-cell]:hover { box-shadow:inset 3px 0 0 var(--diff-inserted-strip), inset 0 0 0 1px var(--soft-line); }
+    .diff-table code.new-code[data-hunk-edit-cell]:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:-1px; white-space:pre; background:var(--vscode-editor-background,var(--diff-editor-bg)); }
     .hunk-apply-btn[disabled] { opacity:.45; cursor:default; }
     .hunk-apply-btn.is-dirty { border-color:var(--diff-inserted-strip); color:var(--diff-inserted-strip); }
     .unicode-marker { display:none; margin:0 2px; border:1px solid rgba(247,193,77,.42); border-radius:4px; background:rgba(247,193,77,.13); color:var(--amber); font-size:10px; line-height:1; padding:1px 3px; vertical-align:1px; }

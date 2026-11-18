@@ -6,8 +6,116 @@ import { execFileSync } from "node:child_process";
 interface Target { type: string; webSocketDebuggerUrl?: string; }
 interface Reply { id?: number; method?: string; params?: { context?: { id: number } }; result?: { result?: { value?: unknown } }; error?: unknown; }
 
+type Listener = (event: { data?: unknown }) => void;
+interface CdpSocket {
+  addEventListener(type: "open" | "message" | "error", listener: Listener, options?: { once?: boolean }): void;
+  send(text: string): void;
+  close(): void;
+}
+
+/**
+ * Minimal RFC 6455 client for the local DevTools endpoint, used when the extension host has
+ * no global WebSocket (VS Code builds before Node 22, e.g. the 1.90 minimum engine). It only
+ * needs what CDP uses here: one text-message stream, masked client frames, unmasked server
+ * frames with fragmentation and 16/64-bit lengths. Test-only; never shipped in the VSIX.
+ */
+class NodeCdpSocket implements CdpSocket {
+  private readonly listeners: { type: string; listener: Listener; once: boolean }[] = [];
+  private conn?: import("node:net").Socket;
+  private buffer = Buffer.alloc(0);
+  private fragments: Buffer[] = [];
+
+  constructor(url: string) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const http = require("node:http") as typeof import("node:http");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const crypto = require("node:crypto") as typeof import("node:crypto");
+    const target = new URL(url);
+    const request = http.request({
+      host: target.hostname, port: target.port, path: target.pathname + target.search,
+      headers: {
+        Connection: "Upgrade", Upgrade: "websocket", "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": crypto.randomBytes(16).toString("base64"),
+      },
+    });
+    request.on("upgrade", (_res, conn, head) => {
+      this.conn = conn;
+      conn.on("data", chunk => this.receive(chunk));
+      conn.on("error", () => this.emit("error", {}));
+      if (head.length) this.receive(head);
+      this.emit("open", {});
+    });
+    request.on("response", () => this.emit("error", {}));
+    request.on("error", () => this.emit("error", {}));
+    request.end();
+  }
+
+  addEventListener(type: string, listener: Listener, options?: { once?: boolean }): void {
+    this.listeners.push({ type, listener, once: options?.once === true });
+  }
+
+  private emit(type: string, event: { data?: unknown }): void {
+    for (const entry of [...this.listeners]) {
+      if (entry.type !== type) continue;
+      if (entry.once) this.listeners.splice(this.listeners.indexOf(entry), 1);
+      entry.listener(event);
+    }
+  }
+
+  private receive(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    for (;;) {
+      if (this.buffer.length < 2) return;
+      const fin = (this.buffer[0] & 0x80) !== 0;
+      const opcode = this.buffer[0] & 0x0f;
+      let length = this.buffer[1] & 0x7f;
+      let offset = 2;
+      if (length === 126) {
+        if (this.buffer.length < 4) return;
+        length = this.buffer.readUInt16BE(2); offset = 4;
+      } else if (length === 127) {
+        if (this.buffer.length < 10) return;
+        length = Number(this.buffer.readBigUInt64BE(2)); offset = 10;
+      }
+      if (this.buffer.length < offset + length) return;
+      const payload = this.buffer.subarray(offset, offset + length);
+      this.buffer = this.buffer.subarray(offset + length);
+      if (opcode === 0x8) { this.close(); return; }
+      if (opcode === 0x9) { this.frame(0xa, payload); continue; }
+      if (opcode !== 0x1 && opcode !== 0x0) continue;
+      this.fragments.push(Buffer.from(payload));
+      if (fin) {
+        const data = Buffer.concat(this.fragments).toString("utf8");
+        this.fragments = [];
+        this.emit("message", { data });
+      }
+    }
+  }
+
+  private frame(opcode: number, payload: Buffer): void {
+    if (!this.conn) throw new Error("CDP socket is not open");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mask = (require("node:crypto") as typeof import("node:crypto")).randomBytes(4);
+    const header = payload.length < 126 ? Buffer.from([0x80 | opcode, 0x80 | payload.length])
+      : payload.length < 65536 ? Buffer.from([0x80 | opcode, 0x80 | 126, payload.length >> 8, payload.length & 0xff])
+        : Buffer.concat([Buffer.from([0x80 | opcode, 0x80 | 127]), (() => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(payload.length)); return b; })()]);
+    const masked = Buffer.alloc(payload.length);
+    for (let i = 0; i < payload.length; i++) masked[i] = payload[i] ^ mask[i % 4];
+    this.conn.write(Buffer.concat([header, mask, masked]));
+  }
+
+  send(text: string): void { this.frame(0x1, Buffer.from(text, "utf8")); }
+
+  close(): void { this.conn?.destroy(); this.conn = undefined; }
+}
+
+function openCdpSocket(url: string): CdpSocket {
+  const native = (globalThis as { WebSocket?: new (url: string) => CdpSocket }).WebSocket;
+  return native ? new native(url) : new NodeCdpSocket(url);
+}
+
 async function evaluateTarget(url: string, expression: string): Promise<boolean> {
-  const socket = new WebSocket(url);
+  const socket = openCdpSocket(url);
   const contexts = new Set<number>();
   let sequence = 0;
   const pending = new Map<number, (reply: Reply) => void>();

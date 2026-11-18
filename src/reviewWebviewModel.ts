@@ -16,6 +16,15 @@
 import { compareReviewTimelineSnapshots, type ReviewTimelineSnapshot, type ReviewTimelineSnapshotComparison } from "./reviewTimelineModel";
 import type { NodePosition, SemanticChange, SemanticDiff, SemanticNode } from "./types";
 import { script } from "./reviewWebviewScript";
+import {
+  EQUIVALENT_REVIEW_LABEL,
+  INCOMPLETE_REVIEW_LABEL,
+  bugReportPreview,
+  equivalentDescription,
+  incompleteMessage,
+  incompleteReview,
+  isEquivalentReview,
+} from "./reviewCompleteness";
 import { styles } from "./reviewWebviewStyles";
 import {
   assetArtifact,
@@ -30,9 +39,11 @@ import {
 import {
   DEFAULT_DIFF_CONTEXT_LINES,
   buildDiffRows,
+  buildDiffRowsResult,
   diffRows,
   diffStats,
   hunkTextPayload,
+  hunkTextPayloadAt,
   type DiffStats,
 } from "./reviewDiffRows";
 import {
@@ -65,11 +76,13 @@ export type ReviewWebviewCommand =
   | "stageHunk"
   | "revertHunk"
   | "applyHunk"
+  | "previewHunk"
   | "editHunk"
   | "openTimelineSnapshot"
   | "cycleGrouping"
   | "copyReleaseNotes"
   | "exportReleaseNotes"
+  | "reportIncomplete"
   | "refresh"
   | "reveal";
 
@@ -91,6 +104,14 @@ export interface ReviewWebviewHunkPayload {
   oldEndLine?: number;
   newStartLine?: number;
   newEndLine?: number;
+  reviewedNewLines?: string[];
+  /** Zero-length-side anchors and unchanged context (see hunkTextPayloadAt). */
+  oldLinesBefore?: number;
+  newLinesBefore?: number;
+  contextBefore?: string[];
+  contextAfter?: string[];
+  oldMissingFinalNewline?: boolean;
+  newMissingFinalNewline?: boolean;
 }
 export interface ReviewWebviewMessage {
   command: ReviewWebviewCommand;
@@ -223,6 +244,12 @@ export interface ReviewPanelModel {
   oldText: string;
   newText: string;
   diffRows: ReviewDiffRow[];
+  /**
+   * True when the source lines could not be aligned within the textual diff
+   * budget. The rows are then not precise evidence: the panel shows a notice
+   * pointing at the native diff and offers no hunk actions (issue 127).
+   */
+  diffRowsImprecise?: boolean;
   ref: string;
   /** Optional AI-drafted release narrative (BYOK/Copilot). Filled asynchronously. */
   releaseNarrative?: string;
@@ -330,6 +357,7 @@ const EMPTY_SUMMARY: ReviewSummary = {
   importantCount: 0,
   semanticChangeCount: 0,
   styleOnlyCount: 0,
+  incompleteCount: 0,
   cleanCount: 0,
 };
 
@@ -431,8 +459,11 @@ export function buildReviewPanelModel(
   ref: string,
   options: { contextLines?: number } = {},
 ): ReviewPanelModel {
-  const diffRows = buildDiffRows(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
-  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, diffRows));
+  const alignment = buildDiffRowsResult(oldText, newText, file.diff, options.contextLines ?? DEFAULT_DIFF_CONTEXT_LINES);
+  const diffRows = alignment.rows;
+  // Imprecise rows never back per-entry hunk actions.
+  const evidenceRows = alignment.exact ? diffRows : [];
+  const entries = reviewEntriesForFile(file).map((entry, index) => dashboardEntry(file, entry, index, evidenceRows));
   const semanticPair = file.diff
     ? buildSemanticOnlyDocuments(oldText, newText, file.diff, DEFAULT_SEMANTIC_ONLY_OPTIONS)
     : undefined;
@@ -446,6 +477,7 @@ export function buildReviewPanelModel(
     oldText,
     newText,
     diffRows,
+    ...(alignment.exact ? {} : { diffRowsImprecise: true }),
     ref,
     assetDiff: assetDiffFromMetadata(file.diff?.metadata),
     workingTreeImage: typeof file.diff?.metadata?.working_tree_image === "string"
@@ -511,8 +543,7 @@ function attachSemanticDecorations(
     // When multiple changes are merged into one chunk, use the LAST change's
     // kind. The `changeIndexes` list on the projection is the ground truth
     // for which changes contributed to this projected position.
-    const chunkChangeIndexes = (proj as { changeIndexes?: number[] }).changeIndexes
-      ?? [proj.changeIndex];
+    const chunkChangeIndexes = proj.changeIndexes ?? [proj.changeIndex];
     const lastChangeIdx = chunkChangeIndexes[chunkChangeIndexes.length - 1];
     if (lastChangeIdx === undefined) { continue; }
     const change = changes[lastChangeIdx];
@@ -569,11 +600,29 @@ function denseProjectedLineMap(
   return dense;
 }
 
+/**
+ * Every review-panel message that can change the working tree or the index
+ * (issue 134). The panel is not a diff editor: these are hunk/file-scoped SCM
+ * actions that the HOST performs through verified paths (native Git commands,
+ * `git apply --cached` with context, or a WorkspaceEdit checked byte-for-byte
+ * against the live document). Free-form editing belongs to the native diff
+ * ("Edit in native"). docs/ARCHITECTURE.md lists the same inventory; a test
+ * keeps them in sync.
+ */
+export const REVIEW_WEBVIEW_WRITE_COMMANDS = ["stageFile", "revertFile", "stageHunk", "revertHunk", "editHunk"] as const;
+
+/** Every command the review panel may send; anything else is rejected. */
+export const REVIEW_WEBVIEW_COMMANDS: readonly ReviewWebviewCommand[] = [
+  "openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk",
+  "applyHunk", "previewHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes",
+  "exportReleaseNotes", "reportIncomplete", "refresh", "reveal",
+];
+
 export function isReviewWebviewMessage(value: unknown): value is ReviewWebviewMessage {
   if (!isRecord(value)) {
     return false;
   }
-  if (!["openCustomDiff", "openNativeDiff", "openSemanticOnlyDiff", "stageFile", "revertFile", "stageHunk", "revertHunk", "applyHunk", "editHunk", "openTimelineSnapshot", "cycleGrouping", "copyReleaseNotes", "exportReleaseNotes", "refresh", "reveal"].includes(String(value.command))) {
+  if (!REVIEW_WEBVIEW_COMMANDS.includes(String(value.command) as ReviewWebviewCommand)) {
     return false;
   }
   if (value.payload === undefined) {
@@ -645,6 +694,7 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
           ${viewTab("Diagnostics", "diagnostics", "detail")}
         </nav>
       ${sourceFallback ? `<p class="fallback-notice" role="note">Source fallback · Semantic equivalence unknown. Review the source changes; intent could not be established.</p>` : ""}
+      ${incompleteNotice(model)}
       </header>
       <header class="diff-topbar" aria-label="Current file review controls">
         <nav class="top-badges" aria-label="Review filters and counts">
@@ -671,6 +721,23 @@ export function renderPanelHtml(model: ReviewPanelModel, options: RenderOptions)
       </main>
     </section>`;
   return page(`IntentumDiff - ${file.relativePath}`, body, options);
+}
+
+/**
+ * Core issue 252: core could not explain this file's change. Shows core's message verbatim and
+ * offers the report-a-bug preview (which asks before opening anything).
+ */
+function incompleteNotice(model: ReviewPanelModel): string {
+  const message = incompleteMessage(model.diff);
+  if (message === undefined) {
+    return "";
+  }
+  const payload = model.file.payload;
+  const canReport = payload !== undefined && bugReportPreview(incompleteReview(model.diff)) !== undefined;
+  return `<div class="incomplete-notice" role="alert" data-completeness="incomplete">
+        <p><strong>${escapeHtml(INCOMPLETE_REVIEW_LABEL)}</strong> <span class="incomplete-message">${escapeHtml(message)}</span></p>
+        ${canReport ? actionButton("Report bug…", "reportIncomplete", payload, "issue") : ""}
+      </div>`;
 }
 
 function renderAdaptiveDiffPage(model: ReviewPanelModel, options: RenderOptions): string {
@@ -711,7 +778,9 @@ function renderTextDiffWorkbench(model: ReviewPanelModel): string {
   const totalChanges = counts.added + counts.removed + counts.changed + counts.refactored + counts.moved;
   const rows = model.diffRows ?? [];
   const hasContent = rows.some((row) => row.kind !== "equal");
-  const body = hasContent
+  const body = model.diffRowsImprecise
+    ? `<p class="fallback-notice" role="note">This file's source changes are too large to align line by line here, so no source evidence or hunk actions are shown. Open the native diff for the exact changes.</p>`
+    : hasContent
     ? `<div class="diff-column-heads" aria-hidden="true">
           <span></span><span></span><span>Base &middot; ${escapeHtml(model.ref)}</span>
           <span></span><span></span><span>Working tree</span>
@@ -959,7 +1028,7 @@ function entryHunkPayload(entry: ReviewEntry, rows: ReviewDiffRow[]): ReviewWebv
     }
     end += 1;
   }
-  const hunk = hunkTextPayload(rows.slice(start, end));
+  const hunk = hunkTextPayloadAt(rows, start, end);
   return hunk.oldLines.length > 0 || hunk.newLines.length > 0 ? hunk : undefined;
 }
 
@@ -1025,6 +1094,13 @@ function fileDescription(file: ReviewFile): string {
     file.diff?.change_groups?.length ? `${file.diff.change_groups.length} groups` : undefined,
     file.diff?.changes?.length ? `${file.diff.changes.length} raw changes` : undefined,
   ].filter(Boolean);
+  if (incompleteMessage(file.diff) !== undefined) {
+    // Core issue 252: an unexplained source delta is never "No semantic changes".
+    return [...parts, INCOMPLETE_REVIEW_LABEL].join(" - ");
+  }
+  if (parts.length === 0 && isEquivalentReview(file.diff)) {
+    return [EQUIVALENT_REVIEW_LABEL, equivalentDescription(file.diff)].filter(Boolean).join(" - ");
+  }
   return parts.join(" - ") || "No semantic changes";
 }
 
@@ -1563,7 +1639,7 @@ function entryActionButtons(entry: ReviewWebviewEntry): string {
   return `<span class="entry-actions" aria-label="Semantic entity actions">
     ${actionButton("Stage", "stageHunk", { ...entry.payload, actionKind: "stageHunk" }, "accept")}
     ${actionButton("Revert", "revertHunk", { ...entry.payload, actionKind: "revertHunk" }, "risk")}
-    ${actionButton("Apply", "applyHunk", { ...entry.payload, actionKind: "applyHunk" }, "detail")}
+    ${actionButton("Preview", "previewHunk", { ...entry.payload, actionKind: "applyHunk" }, "detail")}
   </span>`;
 }
 
@@ -1700,14 +1776,24 @@ function reviewTabbedPages(model: ReviewPanelModel, stats: DiffStats): string {
     internalCount ? `${internalCount} internal change${internalCount === 1 ? "" : "s"}` : "",
     contentCount ? `${contentCount} content change${contentCount === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
-  const intentHeroTitle = intentSummaryParts.length > 0
-    ? intentSummaryParts.join(" · ")
-    : noise ? "Formatting / noise only" : "No semantic changes";
-  const intentHeroDesc = intentSummaryParts.length > 0
-    ? "IntentumDiff groups source evidence into review intent so changed meaning stays visible."
-    : noise
-      ? `All ${noise.count} raw change${noise.count === 1 ? "" : "s"} in this file were suppressed as formatting or noise.`
-      : "No behavior-affecting or refactor changes were detected in this file.";
+  const incomplete = incompleteMessage(model.diff);
+  const equivalent = isEquivalentReview(model.diff);
+  const equivalentProof = equivalentDescription(model.diff);
+  const intentHeroTitle = incomplete !== undefined
+    ? INCOMPLETE_REVIEW_LABEL
+    : intentSummaryParts.length > 0
+      ? intentSummaryParts.join(" · ")
+      : equivalent ? EQUIVALENT_REVIEW_LABEL
+      : noise ? "Formatting / noise only" : "No semantic changes";
+  const intentHeroDesc = incomplete !== undefined
+    ? incomplete
+    : intentSummaryParts.length > 0
+      ? "IntentumDiff groups source evidence into review intent so changed meaning stays visible."
+      : equivalent
+        ? ["The sources differ, and IntentumDiff proved them equivalent.", equivalentProof ? `(${equivalentProof})` : ""].filter(Boolean).join(" ")
+      : noise
+        ? `All ${noise.count} raw change${noise.count === 1 ? "" : "s"} in this file were suppressed as formatting or noise.`
+        : "No behavior-affecting or refactor changes were detected in this file.";
   const whatChangedList = semanticEntries.length > 0
     ? semanticEntries.slice(0, 8).map(intentMeaningItem).join("")
     : noise
@@ -1806,7 +1892,7 @@ function reviewTabbedPages(model: ReviewPanelModel, stats: DiffStats): string {
         ${releaseNarrativeCard(model.releaseNarrative)}
         <section class="insight-card release-note-preview">
           <h3>Behavior changes</h3>
-          <ul>${releaseNoteItems(releaseNotes.behavior, "No behavior-facing changes detected.")}</ul>
+          <ul>${releaseNoteItems(releaseNotes.behavior, incompleteMessage(model.diff) ?? "No behavior-facing changes detected.")}</ul>
         </section>
         <section class="insight-card release-note-preview">
           <h3>Internal changes</h3>
@@ -2123,7 +2209,7 @@ function viewTab(label: string, view: string, icon: IconName, active = false): s
 }
 
 function entryIcon(kind: ReviewWebviewEntry["kind"]): string {
-  if (kind === "guardrail") return iconSvg("risk");
+  if (kind === "guardrail" || kind === "incomplete") return iconSvg("risk");
   if (kind === "schema-status") return iconSvg("schema");
   if (kind === "refactoring" || kind === "moved-code") return iconSvg("intent");
   if (kind === "raw-evidence" || kind === "evidence") return iconSvg("evidence");
@@ -2146,6 +2232,7 @@ function entryKindLabel(kind: ReviewWebviewEntry["kind"]): string {
     "change": "Change",
     "evidence": "Evidence",
     "style": "Style",
+    "incomplete": "Incomplete review",
     "clean": "Clean",
     "skipped": "Skipped",
     "error": "Error",

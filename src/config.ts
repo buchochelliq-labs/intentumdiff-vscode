@@ -86,9 +86,9 @@ export type LiveServerLaunch =
   | { kind: "python" };
 
 /** Platforms (`<process.platform>-<process.arch>`) with a *published*, verified native
- *  live-server release. 0.0.2 publishes none (live-server#25: CI artifacts only), so `auto`
- *  uses the Python runtime everywhere rather than defaulting to a binary users cannot get.
- *  Add a platform here only once its release asset is published (0.0.3, vscode#21). */
+ *  live-server release. 0.0.3 still publishes none (live-server#25: CI artifacts only), so
+ *  `auto` uses the Python runtime everywhere rather than defaulting to a binary users cannot
+ *  get. Add a platform here only once its release asset is published (vscode#21). */
 export const VERIFIED_NATIVE_PLATFORMS: readonly string[] = [];
 
 export function currentPlatformKey(): string {
@@ -143,8 +143,8 @@ export interface LiveServerFailureDetails {
  *  three distinct fixes: a missing USER override points at the setting (and the bundled
  *  engine when we ship one — never at the .venv, which would be a downgrade); a missing
  *  bundle means a broken install; a missing python CLI means the workspace .venv. */
-/** 0.0.2 ships the Python runtime as a pre-release (0.0.2b2): plain `pip install` would
- *  pick the older stable 0.0.1, so the advice names `--pre`. */
+/** The Python runtime ships only as a pre-release (0.0.3b1): there is no installable stable
+ *  release (0.0.1 is yanked), so plain `pip install` cannot pick it and the advice names `--pre`. */
 export const PYTHON_INSTALL_COMMAND = "pip install --pre intentumdiff-python";
 
 export function enoentFailureDetails(

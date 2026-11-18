@@ -141,6 +141,47 @@ export interface SchemaStatusMetadata {
   error?: string;
 }
 
+/** Core's completeness verdict for a served review (core issue 252). */
+export type ReviewCompleteness = "complete" | "equivalent" | "incomplete";
+
+/** A changed line hunk core could not explain (zero-based lines, exclusive end bytes). */
+export interface IncompleteSourceRange {
+  old_start_byte: number;
+  old_end_byte: number;
+  new_start_byte: number;
+  new_end_byte: number;
+  old_start_line: number;
+  old_end_line: number;
+  new_start_line: number;
+  new_end_line: number;
+}
+
+/**
+ * Core's pre-built, sanitised bug report. Bindings preview `title` + `body_markdown` and
+ * open `issue_url` only on explicit user confirmation; `truncated` means the URL carries a
+ * shortened body (`body_markdown` stays complete). `outline` is passed through untouched.
+ */
+export interface IncompleteReport {
+  title: string;
+  body_markdown: string;
+  truncated: boolean;
+  issue_url: string;
+  outline?: Record<string, unknown>;
+}
+
+/** Why core could not explain a source delta. `message` is shown verbatim. */
+export interface IncompleteReview {
+  reason: string;
+  message: string;
+  report_url: string;
+  language: string;
+  core_version: string;
+  source_ranges: IncompleteSourceRange[];
+  source_ranges_truncated?: boolean;
+  source_ranges_available?: boolean;
+  report?: IncompleteReport;
+}
+
 export interface SemanticDiff {
   guardrail_violations?: GuardrailViolation[];
   changes?: SemanticChange[];
@@ -152,8 +193,14 @@ export interface SemanticDiff {
   is_style_only?: boolean;
   parse_errors?: string[];
   is_fallback?: boolean;
+  /** Absent on DTOs from wheels that predate core issue 252: render as before. */
+  completeness?: ReviewCompleteness | null;
+  /** Set by core exactly when `completeness === "incomplete"`; never a clean review. */
+  incomplete?: IncompleteReview | null;
   metadata?: {
     schema?: SchemaStatusMetadata;
+    /** The rule core used to prove an `equivalent` review (e.g. `keyed_data.unordered_mapping_member_order`). */
+    equivalence_proof?: string | null;
     /** Magic-byte content type of the diffed file (mime + coarse category). */
     content_type?: {
       mime?: string;
@@ -255,7 +302,8 @@ export interface DecorationLike {
     | "refactoring"
     | "style"
     | "inlineDeletionWord"
-    | "inlineDeletionGap";
+    | "inlineDeletionGap"
+    | "unexplained";
   message: string;
   position: NodePosition;
   deletedText?: string;
@@ -268,6 +316,11 @@ export interface DiffSummary {
   immutableCount: number;
   importantCount: number;
   styleOnly: boolean;
+  /** Core's completeness verdict; undefined for DTOs that predate core issue 252. */
+  completeness?: ReviewCompleteness;
+  /** Core's `incomplete.message`, verbatim, when the review is incomplete. */
+  incompleteMessage?: string;
+  equivalenceProof?: string;
   hasParseErrors: boolean;
   language?: string;
 }

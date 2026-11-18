@@ -3,9 +3,13 @@ import test from "node:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// 0.0.2 independent review. Compiled to out/test/, so the repo root is two levels up.
+// Release independent review. Compiled to out/test/, so the repo root is two levels up.
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publishYml = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "publish.yml"), "utf8");
+const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+  version: string;
+  scripts: Record<string, string>;
+};
 
 test("publish promotes the reviewed VSIX instead of rebuilding it (#101)", () => {
   // The Marketplace/Open VSX bytes must be the exact VSIX that real-runtime acceptance
@@ -14,9 +18,11 @@ test("publish promotes the reviewed VSIX instead of rebuilding it (#101)", () =>
   assert.match(publishYml, /sha256/i, "publish.yml must verify the promoted VSIX's sha256");
 });
 
-test("0.0.2 defers the release-media gate, recording it, and still verifies supplied media (#103)", () => {
+test(`${pkg.version} defers the release-media gate, recording it, and still verifies supplied media (#103)`, () => {
   // No workflow captures rc-release-media yet. Omitting it must be visible, not silent,
   // and supplying it must still run the full verification below.
+  // 0.0.3 deferred it again, to 0.0.4: the workflow must say so, citing #103.
+  assert.match(publishYml, /deferred to 0\.0\.4[^\n]*#103/);
   assert.match(publishYml, /name: Record that release media was not supplied[^\n]*\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID == ''/);
   assert.match(publishYml, /GITHUB_STEP_SUMMARY/);
   assert.match(publishYml, /name: Download and verify separately reviewed release media\n\s+if: env\.REVIEWED_MEDIA_ARTIFACT_ID != ''/);
@@ -35,11 +41,16 @@ test("publish uses independently reviewed release-media bytes, not historical sc
   assert.doesNotMatch(publishYml, /validate_release_media_manifest\.py release-media\/manifest\.json/);
 });
 
-test("0.0.2 is packaged and published on the pre-release channel", () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> };
+test(`${pkg.version} is packaged and published on the pre-release channel`, () => {
+  // The Marketplace rejects semver pre-release suffixes: the channel comes from
+  // `--pre-release`, so the version itself stays plain major.minor.patch.
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
   assert.match(pkg.scripts.vsix, /vsce package --pre-release\b/);
   assert.match(publishYml, /vsce publish --pre-release (--skip-duplicate )?--packagePath/);
-  assert.match(publishYml, /ovsx publish \S+ --pre-release/);
+  // ovsx >= 1.4 ignores --pre-release for a prepackaged VSIX: the channel comes from the
+  // reviewed VSIX manifest (checked below) and is verified on Open VSX after upload.
+  assert.match(publishYml, /ovsx publish \S+ --skip-duplicate/);
+  assert.doesNotMatch(publishYml, /ovsx publish \S+ --pre-release/);
   assert.match(publishYml, /Microsoft\.VisualStudio\.Code\.PreRelease" Value="true"/);
 });
 
@@ -50,7 +61,7 @@ test("Open VSX is a required registry, checked before any upload and verified af
   assert.ok(preflight > 0 && preflight < marketplace, "token check must precede the first upload");
   assert.doesNotMatch(publishYml, /OVSX_PAT is not set - skipping Open VSX/);
   assert.match(publishYml, /vsce publish --pre-release --skip-duplicate/);
-  assert.match(publishYml, /ovsx publish \S+ --pre-release --skip-duplicate/);
+  assert.match(publishYml, /ovsx publish \S+ --skip-duplicate --pat/);
   assert.match(publishYml, /open-vsx\.org\/api\/\$namespace\/\$name\/\$version/);
   assert.match(publishYml, /preRelease/);
 });

@@ -90,7 +90,9 @@ export function buildReleaseNotes(diff: SemanticDiff | undefined): ReleaseNotes 
       behavior.push(trimmed);
     } else if (risk === "internal") {
       internal.push(trimmed);
-    } else if (risk === "content") {
+    } else {
+      // "content", or no derived risk (an unclassified change): never dropped,
+      // never promoted to a behavior claim.
       other.push(trimmed);
     }
   };
@@ -153,7 +155,7 @@ function markdownSection(title: string, lines: string[], emptyLine: string): str
  */
 export function releaseNotesToMarkdown(
   notes: ReleaseNotes,
-  options: { title?: string; narrative?: string } = {},
+  options: { title?: string; narrative?: string; incompleteMessage?: string } = {},
 ): string {
   const heading = options.title?.trim() || "Release notes";
   const narrative = options.narrative?.trim();
@@ -161,7 +163,8 @@ export function releaseNotesToMarkdown(
     `# ${heading}`,
     "",
     ...(narrative ? [`## Summary`, narrative, ""] : []),
-    markdownSection("Behavior changes", notes.behavior, EMPTY_BEHAVIOR),
+    // An incomplete review is never "no changes": core's message replaces the empty line.
+    markdownSection("Behavior changes", notes.behavior, options.incompleteMessage?.trim() || EMPTY_BEHAVIOR),
     "",
     markdownSection("Internal changes", notes.internal, EMPTY_INTERNAL),
     "",
