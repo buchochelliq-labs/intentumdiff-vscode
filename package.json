@@ -2,7 +2,7 @@
   "name": "intentumdiff",
   "displayName": "IntentumDiff",
   "description": "Live semantic review that surfaces moved code, refactorings, and meaningful changes.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "buchochelliq-labs",
   "license": "MIT",
   "repository": {
@@ -284,8 +284,7 @@
           "light": "#6a737d",
           "highContrast": "#b8c4d6"
         }
-      }
-,
+      },
       {
         "id": "intentumdiff.semanticChanges.incomplete",
         "description": "Color for incomplete reviews and lines IntentumDiff could not explain.",
@@ -748,7 +747,7 @@
             "python"
           ],
           "default": "auto",
-          "description": "'auto' uses the Rust live-server only on platforms with a published native release (none in 0.0.2) and the Python runtime (intentumdiff-python) everywhere else. 'native' always uses the Rust live-server. 'python' always uses the Python runtime. A bundled native server or an explicit intentumdiff.executable path wins."
+          "description": "'auto' uses the Rust live-server only on platforms with a published native release (none in 0.0.3) and the Python runtime (intentumdiff-python) everywhere else. 'native' always uses the Rust live-server. 'python' always uses the Python runtime. A bundled native server or an explicit intentumdiff.executable path wins."
         },
         "intentumdiff.review.maxAutoRetries": {
           "type": "number",

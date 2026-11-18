@@ -55,8 +55,8 @@ Image artifacts come from the Rust engine. There is no image processing in the w
 
 ```bash
 git fetch origin
-git checkout -b feat/my-change origin/release/v0.0.2-rc
-gh pr create --base release/v0.0.2-rc
+git checkout -b feat/my-change origin/release/v0.0.3-rc
+gh pr create --base release/v0.0.3-rc
 ```
 
 Approvals are set to zero because this is a solo-maintainer project, but checks must pass.

@@ -46,3 +46,69 @@ Still a **human** step for each candidate, and not claimed by any automated job:
 If a `min-engine` leg fails because of a missing API, either stop using that API or raise
 `engines.vscode` to the lowest version that passes. Then update the leg's `vscode` value
 (`test/certificationContract.test.ts` keeps them in sync).
+
+## Before tagging 0.0.3: human steps
+
+These cannot be done by CI and must be ticked by a person for the exact candidate:
+
+- **Vanilla VS Code, every claimed platform.** Install the reviewed VSIX into a clean profile
+  (`code --user-data-dir <empty> --extensions-dir <empty> --install-extension <vsix>`), with no
+  workspace settings and no other extensions, on Windows x64, Windows arm64, macOS arm64 and
+  Linux x64. Confirm the extension host log is clean (no errors, no missing-file warnings),
+  run a real review, open an incomplete review and walk the "Report bug…" preview to the
+  dialog without opening the issue (#137, #48).
+- **Point publish at the reviewed run.** After `real-runtime.yml` succeeds on the 0.0.3
+  candidate, set these repository variables to that run:
+  - `INTENTUMDIFF_VSIX_RUN_ID`: the successful "Packaged extension real-runtime acceptance" run ID;
+  - `INTENTUMDIFF_VSIX_ARTIFACT_ID`: that run's `rc-candidate-vsix` artifact ID
+    (it must contain `intentumdiff-0.0.3.vsix`);
+  - `INTENTUMDIFF_VSIX_SHA256`: the SHA-256 of that VSIX;
+  - `INTENTUMDIFF_VSIX_SOURCE_SHA`: the run's head commit. The tagged commit's tree must equal
+    this commit's tree, or publish fails closed.
+
+  `INTENTUMDIFF_MEDIA_ARTIFACT_ID` / `INTENTUMDIFF_MEDIA_SHA256` stay optional for 0.0.3:
+  the release-media gate is deferred to 0.0.4 (#103). Run `publish.yml` by `workflow_dispatch`
+  with `dry_run: true` first.
+- **Credentials.** In the `marketplace` environment, confirm `VSCE_PAT` (Azure DevOps PAT with
+  Marketplace *Manage* scope for the `buchochelliq-labs` publisher) and `OVSX_PAT` (Open VSX
+  token for the `buchochelliq-labs` namespace) are present, valid and not about to expire.
+  Confirm who holds them, because the same people own the rollback below.
+- **Listings.** Check by hand that 0.0.2 is listed as a pre-release on both registries. The
+  0.0.2 publish run uploaded to both, but its Open VSX check never saw the version served
+  within ten minutes.
+
+## Rollback
+
+Publishing cannot be undone, so a rollback means *stop new installs and ship a fix*,
+never *replace the bytes*. A version number that has been published is burned on both
+registries, even after it is removed.
+
+**VS Code Marketplace**
+
+- A published version cannot be deleted or overwritten, and the same version cannot be
+  published again. The fix is a **superseding version**: bump `package.json` (for example
+  `0.0.3` → `0.0.4`), take it through the RC and real-runtime acceptance, and publish it on
+  the same pre-release channel. Users on the pre-release channel are updated automatically.
+- If the broken version must stop being installable before a fix is ready, a publisher
+  owner can **unpublish** the extension, or mark it deprecated, from the publisher portal
+  (`https://marketplace.visualstudio.com/manage/publishers/buchochelliq-labs`).
+  - Unpublishing hides the **whole listing**, not one version: the page, install count,
+    ratings and reviews stop being visible until it is published again, and nobody can
+    install it in the meantime. Use it only for a defect that harms users.
+  - Deprecation keeps the listing visible with a warning, and can point at a replacement.
+
+**Open VSX**
+
+- A single version **can** be deleted. A namespace owner can do it from the namespace
+  settings on open-vsx.org; otherwise ask an Open VSX admin to delete that version
+  (open an issue at `https://github.com/EclipseFdn/open-vsx.org`). The version number stays
+  burned: publish the superseding version as on the Marketplace.
+
+**Announce it**
+
+- Edit the GitHub release for the broken tag: state the problem, the affected version,
+  which registries it was removed from, and the superseding version. Add the same note
+  to `CHANGELOG.md` under the broken version.
+- If the problem is in the Python runtime rather than the extension, roll back the
+  runtime instead (see the python repo's `docs/PYPI_RELEASE.md`): the extension does not bundle
+  it.

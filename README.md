@@ -57,15 +57,17 @@ never in `settings.json`.
 
 ## Requirements
 
-- **The Python runtime:** `pip install --pre intentumdiff-python` (0.0.2b2, a
-  pre-release, so `--pre` is needed). This is the default on every platform in 0.0.2.
-- *Optional:* the native Rust runtime (`intentumdiff-live-server`). 0.0.2 has no
-  published native release; a verified Linux x64 CI candidate can be installed for
-  testing with the [native installation steps](docs/BUILDING.md#native-runtime-candidate).
+- **The Python runtime:** `pip install --pre intentumdiff-python` (0.0.3b1, a
+  pre-release, so `--pre` is needed). This is the default on every platform.
+- *Optional:* the native Rust runtime (`intentumdiff-live-server`), built from
+  source. 0.0.3 publishes **no native binaries**: build it from the
+  [live-server repository](https://github.com/buchochelliq-labs/intentumdiff-live-server),
+  or install the verified Linux x64 CI candidate for testing with the
+  [native installation steps](docs/BUILDING.md#native-runtime-candidate).
 - VS Code 1.90 or newer
 - A workspace folder backed by git
 
-**Which runtime the extension uses (0.0.2):**
+**Which runtime the extension uses (0.0.3):**
 
 | Platform | Default (`intentumdiff.liveServer.engine: auto`) |
 |---|---|
@@ -75,8 +77,7 @@ To use the native Rust runtime instead, set `intentumdiff.liveServer.engine` to
 `native` and put `intentumdiff-live-server` on your `PATH` (or set
 `intentumdiff.executable` to its absolute path). When the native runtime is selected
 and missing, that is an error; the extension does not silently switch to Python.
-
-Published native releases, and `auto` selecting them, are planned for 0.0.3.
+Because no native release is published, `auto` never selects the native runtime.
 
 Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-started/**
 
@@ -84,10 +85,41 @@ Full guide: **https://buchochelliq-labs.github.io/intentumdiff-docs/getting-star
 
 1. Install the Python runtime: `pip install --pre intentumdiff-python`.
 2. Install **IntentumDiff** from the VS Code Marketplace or Open VSX, extension ID
-   `buchochelliq-labs.intentumdiff`. 0.0.2 is on the **pre-release channel**: on the
+   `buchochelliq-labs.intentumdiff`. 0.0.3 is on the **pre-release channel**: on the
    extension page, choose "Switch to Pre-Release Version".
 
 Both steps are needed: the extension is a front end and the engine does the work.
+
+## Incomplete reviews
+
+Sometimes the engine finds that the old and new file differ but cannot explain
+the change. IntentumDiff then says so instead of showing "no changes":
+
+- the review panel, the **Semantic Changes** tree, the semantic-only diff and the
+  status bar tooltip show the engine's own message, word for word, labelled
+  **Incomplete review**;
+- in the native diff editor, the lines the engine could not explain are
+  highlighted as *IntentumDiff: changed but unexplained*. Only their line
+  positions are used.
+
+### Reporting a bug
+
+Choose **Report bug…** in the review panel, use the inline action on the tree
+entry, or run **IntentumDiff: Report Incomplete Review…**. A dialog first shows
+the issue title and body the engine wrote. Nothing happens until you choose
+**Open GitHub issue**, which opens a pre-filled issue in your browser. If the
+link can only carry a shortened report, the dialog says so and offers
+**Copy full report** so you can paste the whole text into the issue.
+
+Nothing is sent automatically. The report holds only the text the engine wrote:
+no file names, paths or source code.
+
+## Equivalent reviews
+
+When the sources differ but the engine proves they mean the same thing (for
+example JSON keys that were only reordered), the review is shown as
+**Equivalent (style-only)**, with the name of the rule that proved it when the
+engine gives one (for example `proof: <rule>` next to the entry).
 
 ## Documentation
 
