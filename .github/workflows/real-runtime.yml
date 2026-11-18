@@ -162,6 +162,11 @@ jobs:
       - name: Install desktop test dependencies
         timeout-minutes: 10
         run: |
+          # xvfb, scrot and ffmpeg all come from the Ubuntu archive. The runner image also
+          # lists packages.microsoft.com, whose rate limits (HTTP 429) failed `update` under
+          # Error-Mode=any, so drop every source that names it before updating.
+          grep -lrs 'packages\.microsoft\.com' /etc/apt/sources.list.d/ \
+            | xargs -r sudo rm -f --
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends xvfb scrot
       - name: Install capability media dependencies
