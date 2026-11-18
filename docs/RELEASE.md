@@ -110,5 +110,5 @@ registries, even after it is removed.
   which registries it was removed from, and the superseding version. Add the same note
   to `CHANGELOG.md` under the broken version.
 - If the problem is in the Python runtime rather than the extension, roll back the
-  runtime instead (see the python repo's `docs/RELEASE.md`): the extension does not bundle
+  runtime instead (see the python repo's `docs/PYPI_RELEASE.md`): the extension does not bundle
   it.
