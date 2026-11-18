@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.join(user, "User"), { recursive: true });
   fs.mkdirSync(workspace);
   fs.writeFileSync(path.join(user, "User", "settings.json"), JSON.stringify({
-    // 0.0.2's `auto` uses Python everywhere (no published native release, live-server#25),
+    // `auto` uses Python everywhere (no published native release, live-server#25),
     // so native acceptance opts in explicitly and still exercises external PATH lookup.
     ...(runtimeKind === "python" ? {
       "intentumdiff.executable": cli, "intentumdiff.liveServer.engine": "python",

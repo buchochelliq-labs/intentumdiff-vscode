@@ -177,7 +177,7 @@ still need dedicated interaction evidence.
 
 The current Linux x64 test artifact comes from [native-server run 44079955211](https://github.com/buchochelliq-labs/intentumdiff-live-server/actions/runs/44079955211)
 (release head `b18a95e`, live-server #39, Core `74618c3`), the same candidate the packaged-VSIX acceptance
-gate tests. It is a CI candidate, not a published release, so 0.0.2's `auto` engine does
+gate tests. It is a CI candidate, not a published release, so the `auto` engine does
 not select it; set `intentumdiff.liveServer.engine` to `native` to use it. Run these commands from this checkout
 with authenticated GitHub CLI access; expired or unavailable artifacts must fail.
 Python is used here to verify the download, not to run the extension's engine.

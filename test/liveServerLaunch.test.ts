@@ -36,7 +36,7 @@ test("auto without a bundle launches the external Rust server on a platform with
   assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, "linux-x64", ["linux-x64"]), { kind: "native", executable: "intentumdiff-live-server" });
 });
 
-test("0.0.2 publishes no native release, so auto uses Python on every platform (live-server#25)", () => {
+test("no native release is published, so auto uses Python on every platform (live-server#25)", () => {
   assert.deepEqual(VERIFIED_NATIVE_PLATFORMS, []);
   for (const platform of ["linux-x64", "darwin-arm64", "darwin-x64", "win32-x64", "win32-arm64", "linux-arm64"]) {
     assert.deepEqual(chooseLiveServerLaunch("intentumdiff", "auto", undefined, platform), { kind: "python" }, platform);
@@ -110,7 +110,7 @@ test("ENOENT on the default python CLI keeps the workspace .venv suggestion", ()
     candidate,
   );
   assert.match(details.message, /Install IntentumDiff into the workspace \.venv/);
-  // 0.0.2's runtime is a pre-release; plain `pip install` would pick the older 0.0.1.
+  // The runtime is a pre-release with no installable stable release, so `--pre` is required.
   assert.match(details.message, /pip install --pre intentumdiff-python/);
   assert.equal(details.suggestedExecutable, candidate);
 });
