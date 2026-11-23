@@ -978,7 +978,7 @@
     "@vscode/vsce": "^4.1.1",
     "jsdom": "^29.1.1",
     "ovsx": "1.4.0",
-    "typescript": "^5.4.5"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "tmp": "0.2.7",
