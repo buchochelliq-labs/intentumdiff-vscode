@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Releases can be orchestrated from `buchochelliq-labs/intentumdiff-release` as well as from a
+  tag pushed here. `publish.yml` first decides its release mode (`repo`, `orchestrated`,
+  `deferred`, `orchestrated-dry-run` or `rehearsal`) and names the run after it. A repo release
+  is unchanged; an orchestrated one takes every pin as a dispatch input and publishes only on a
+  tag the orchestrator created.
+
 ## 0.0.3 — pre-release (unreleased)
 
 Ships on the Marketplace and Open VSX **pre-release channel**, like 0.0.2: install it with

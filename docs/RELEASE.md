@@ -47,6 +47,23 @@ If a `min-engine` leg fails because of a missing API, either stop using that API
 `engines.vscode` to the lowest version that passes. Then update the leg's `vscode` value
 (`test/certificationContract.test.ts` keeps them in sync).
 
+## Two ways to release
+
+`publish.yml` starts with a **Release mode** job (`scripts/release_mode.py`, shared with
+`intentumdiff-python`). Its decision is in the run name and the job summary:
+
+| Mode | How it starts | Pins from | Publishes |
+|---|---|---|---|
+| `repo` | a `v*` tag pushed here, or a dispatch on that tag with `dry_run: false` | the `INTENTUMDIFF_VSIX_*` variables or inputs, as before | yes |
+| `orchestrated` | `buchochelliq-labs/intentumdiff-release` creates an annotated tag with a `Release-Orchestrator: <run URL>` line and dispatches `publish.yml` on it | dispatch inputs only; variables are never read | yes |
+| `deferred` | the tag push that an orchestrated tag also fires | nothing | no: the orchestrated dispatch publishes |
+| `orchestrated-dry-run` | the orchestrator rehearsing (`dry_run: true`) | dispatch inputs | no |
+| `rehearsal` | a dispatch with `dry_run: true`, as before | inputs or variables | no |
+
+The repo release below is unchanged and still supported. A dispatch that names an
+orchestrator run must carry the run, artifact, SHA-256 and source pins, must run on a tag
+whose message names a run of `intentumdiff-release`, and fails closed otherwise.
+
 ## Before tagging 0.0.3: human steps
 
 These cannot be done by CI and must be ticked by a person for the exact candidate:
