@@ -80,6 +80,18 @@ test("publish tells a repo release and an orchestrated release apart before touc
     /needs: \[mode, package, scan\][\s\S]*?if: startsWith\(github\.ref, 'refs\/tags\/v'\) && \(needs\.mode\.outputs\.mode == 'repo' \|\| needs\.mode\.outputs\.mode == 'orchestrated'\)/,
   );
   assert.match(publishYml, /^run-name: /m);
+  // An orchestrated run reads no repository variable, not even the optional media pins.
+  for (const [env, input, variable] of [
+    ["REVIEWED_RUN_ID", "candidate_run_id", "INTENTUMDIFF_VSIX_RUN_ID"],
+    ["REVIEWED_MEDIA_ARTIFACT_ID", "candidate_media_artifact_id", "INTENTUMDIFF_MEDIA_ARTIFACT_ID"],
+    ["REVIEWED_MEDIA_SHA256", "candidate_media_sha256", "INTENTUMDIFF_MEDIA_SHA256"],
+  ]) {
+    assert.ok(
+      publishYml.includes(`${env}: \${{ inputs.orchestrator_run == '' && (inputs.${input} || vars.${variable}) || inputs.${input} }}`),
+      `${env} must not fall back to vars.${variable} in an orchestrated run`,
+    );
+  }
+  assert.doesNotMatch(publishYml, /REVIEWED_\w+: \$\{\{ inputs\.\w+ \|\| vars\./, "an unconditional variable fallback is left");
 });
 
 test("release_mode.py: repo releases unchanged, orchestrated ones fail closed", () => {

@@ -101,13 +101,15 @@ jobs:
     permissions:
       contents: read
       actions: read
+    # An orchestrated run never reads repository variables, not even for the optional
+    # media pins: an omitted input stays omitted. Other runs fall back to them as before.
     env:
-      REVIEWED_RUN_ID: ${{ inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID }}
-      REVIEWED_ARTIFACT_ID: ${{ inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID }}
-      REVIEWED_VSIX_SHA256: ${{ inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256 }}
-      REVIEWED_SOURCE_SHA: ${{ inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA }}
-      REVIEWED_MEDIA_ARTIFACT_ID: ${{ inputs.candidate_media_artifact_id || vars.INTENTUMDIFF_MEDIA_ARTIFACT_ID }}
-      REVIEWED_MEDIA_SHA256: ${{ inputs.candidate_media_sha256 || vars.INTENTUMDIFF_MEDIA_SHA256 }}
+      REVIEWED_RUN_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID) || inputs.candidate_run_id }}
+      REVIEWED_ARTIFACT_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID) || inputs.candidate_artifact_id }}
+      REVIEWED_VSIX_SHA256: ${{ inputs.orchestrator_run == '' && (inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256) || inputs.candidate_sha256 }}
+      REVIEWED_SOURCE_SHA: ${{ inputs.orchestrator_run == '' && (inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA) || inputs.candidate_source_sha }}
+      REVIEWED_MEDIA_ARTIFACT_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_media_artifact_id || vars.INTENTUMDIFF_MEDIA_ARTIFACT_ID) || inputs.candidate_media_artifact_id }}
+      REVIEWED_MEDIA_SHA256: ${{ inputs.orchestrator_run == '' && (inputs.candidate_media_sha256 || vars.INTENTUMDIFF_MEDIA_SHA256) || inputs.candidate_media_sha256 }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
