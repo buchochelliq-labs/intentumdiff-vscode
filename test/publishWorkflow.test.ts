@@ -65,3 +65,77 @@ test("Open VSX is a required registry, checked before any upload and verified af
   assert.match(publishYml, /open-vsx\.org\/api\/\$namespace\/\$name\/\$version/);
   assert.match(publishYml, /preRelease/);
 });
+
+test("publish tells a repo release and an orchestrated release apart before touching bytes", () => {
+  // scripts/release_mode.py decides; every later job keys off its output.
+  assert.match(publishYml, /\n {2}mode:\n {4}name: Release mode\n/);
+  assert.match(publishYml, /run: python3 scripts\/release_mode\.py/);
+  assert.match(publishYml, /DISPATCH_PUBLISHES_FROM_TAG: "true"/, "a dispatch on the tag with dry_run=false still publishes");
+  assert.match(publishYml, /REQUIRED_INPUTS: candidate_run_id,candidate_artifact_id,candidate_sha256,candidate_source_sha/);
+  assert.match(publishYml, /orchestrator_run:\n\s+description: "Set only by intentumdiff-release/);
+  // The orchestrated tag's own push must not publish from stale variables.
+  assert.match(publishYml, /needs: mode\n\s+if: needs\.mode\.outputs\.mode != 'deferred' && needs\.mode\.outputs\.mode != 'none'/);
+  assert.match(
+    publishYml,
+    /needs: \[mode, package, scan\][\s\S]*?if: startsWith\(github\.ref, 'refs\/tags\/v'\) && \(needs\.mode\.outputs\.mode == 'repo' \|\| needs\.mode\.outputs\.mode == 'orchestrated'\)/,
+  );
+  assert.match(publishYml, /^run-name: /m);
+  // An orchestrated run reads no repository variable, not even the optional media pins.
+  for (const [env, input, variable] of [
+    ["REVIEWED_RUN_ID", "candidate_run_id", "INTENTUMDIFF_VSIX_RUN_ID"],
+    ["REVIEWED_MEDIA_ARTIFACT_ID", "candidate_media_artifact_id", "INTENTUMDIFF_MEDIA_ARTIFACT_ID"],
+    ["REVIEWED_MEDIA_SHA256", "candidate_media_sha256", "INTENTUMDIFF_MEDIA_SHA256"],
+  ]) {
+    assert.ok(
+      publishYml.includes(`${env}: \${{ inputs.orchestrator_run == '' && (inputs.${input} || vars.${variable}) || inputs.${input} }}`),
+      `${env} must not fall back to vars.${variable} in an orchestrated run`,
+    );
+  }
+  assert.doesNotMatch(publishYml, /REVIEWED_\w+: \$\{\{ inputs\.\w+ \|\| vars\./, "an unconditional variable fallback is left");
+});
+
+test("release_mode.py: repo releases unchanged, orchestrated ones fail closed", () => {
+  // Drive the shipped script with a fake GitHub API, exactly as the workflow calls it.
+  const harness = String.raw`
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("m", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+RUN = "https://github.com/buchochelliq-labs/intentumdiff-release/actions/runs/9"
+TAGS = {"v1.0.0": None, "v2.0.0": "x\n\nRelease-Orchestrator: " + RUN + "\n"}
+def get(path):
+    name = path.rsplit("/", 1)[1]
+    if "/git/ref/tags/" in path:
+        return {"object": {"type": "commit"}} if TAGS[name] is None else {"object": {"type": "tag", "sha": name}}
+    return {"message": TAGS[name]}
+pins = {"INPUT_CANDIDATE_RUN_ID": "1", "INPUT_CANDIDATE_ARTIFACT_ID": "2",
+        "INPUT_CANDIDATE_SHA256": "3", "INPUT_CANDIDATE_SOURCE_SHA": "4"}
+base = {"REPOSITORY": "o/r", "DISPATCH_PUBLISHES_FROM_TAG": "true",
+        "REQUIRED_INPUTS": "candidate_run_id,candidate_artifact_id,candidate_sha256,candidate_source_sha"}
+def mode(tag, **env):
+    try:
+        return m.decide({**base, "REF": "refs/tags/" + tag, "REF_NAME": tag, **env}, get)[0]
+    except m.ModeError:
+        return "error"
+print(json.dumps({
+    "tag push": mode("v1.0.0", EVENT_NAME="push"),
+    "orchestrated tag push": mode("v2.0.0", EVENT_NAME="push"),
+    "dispatch on tag": mode("v1.0.0", EVENT_NAME="workflow_dispatch", DRY_RUN="false"),
+    "dry-run dispatch": mode("v1.0.0", EVENT_NAME="workflow_dispatch", DRY_RUN="true"),
+    "orchestrated": mode("v2.0.0", EVENT_NAME="workflow_dispatch", DRY_RUN="false", ORCHESTRATOR_RUN=RUN, **pins),
+    "orchestrated, own tag": mode("v1.0.0", EVENT_NAME="workflow_dispatch", DRY_RUN="false", ORCHESTRATOR_RUN=RUN, **pins),
+    "orchestrated, no pins": mode("v2.0.0", EVENT_NAME="workflow_dispatch", DRY_RUN="false", ORCHESTRATOR_RUN=RUN),
+}))
+`;
+  const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+  const result = spawnSync("python3", ["-c", harness, path.join(repoRoot, "scripts", "release_mode.py")], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    "tag push": "repo",
+    "orchestrated tag push": "deferred",
+    "dispatch on tag": "repo",
+    "dry-run dispatch": "rehearsal",
+    "orchestrated": "orchestrated",
+    "orchestrated, own tag": "error",
+    "orchestrated, no pins": "error",
+  });
+});

@@ -4,6 +4,18 @@ name: Publish extension
 #
 # Tag-driven, fail closed: supply an approved acceptance run, artifact ID, source SHA
 # and expected SHA-256 through repository variables or explicit dry-run inputs.
+#
+# Two ways to release, told apart by scripts/release_mode.py (docs/RELEASE.md):
+# - repo: push a v* tag here (or dispatch on it with dry_run=false); pins come from the
+#   INTENTUMDIFF_VSIX_* variables or inputs, as before.
+# - orchestrated: buchochelliq-labs/intentumdiff-release creates an annotated tag with a
+#   Release-Orchestrator line and dispatches this workflow on it, every pin an input.
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && inputs.orchestrator_run != ''
+  && format('Orchestrated {0} {1} ({2})', inputs.dry_run && 'rehearsal of' || 'release of', github.ref_name, inputs.orchestrator_run)
+  || github.event_name == 'workflow_dispatch' && format('Dispatch on {0} (dry run: {1})', github.ref_name, inputs.dry_run)
+  || github.event_name == 'push' && format('Release {0}', github.ref_name)
+  || format('Publish checks for {0}', github.ref_name) }}
 on:
   pull_request:
     paths: ["package.json", "package-lock.json", ".vscodeignore", ".github/workflows/publish.yml"]
@@ -35,29 +47,69 @@ on:
       candidate_media_sha256:
         description: "SHA-256 of the approved release-media artifact ZIP"
         type: string
+      orchestrator_run:
+        description: "Set only by intentumdiff-release: its run URL. Empty for a repo release or dry run"
+        type: string
+        default: ""
 
 # Deny by default (zizmor excessive-permissions): each job asks for exactly what it
 # needs rather than inheriting a read-write repository default.
 permissions: {}
 
 jobs:
+  mode:
+    name: Release mode
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Decide repo, orchestrated, deferred or rehearsal
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          ORCHESTRATOR_RUN: ${{ inputs.orchestrator_run }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          # A manual dispatch on a tag with dry_run=false has always published here.
+          DISPATCH_PUBLISHES_FROM_TAG: "true"
+          REQUIRED_INPUTS: candidate_run_id,candidate_artifact_id,candidate_sha256,candidate_source_sha
+          INPUT_CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          INPUT_CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
+          INPUT_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+          INPUT_CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
+        run: python3 scripts/release_mode.py
+
   package:
     name: Verify reviewed VSIX
     # Only promote exact bytes that passed installed-runtime acceptance.
     # The real-runtime workflow handles builds for PRs. Release workflows never rebuild.
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # The tag push of an orchestrated tag is deferred: its own dispatch publishes.
+    needs: mode
+    if: needs.mode.outputs.mode != 'deferred' && needs.mode.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       actions: read
+    # An orchestrated run never reads repository variables, not even for the optional
+    # media pins: an omitted input stays omitted. Other runs fall back to them as before.
     env:
-      REVIEWED_RUN_ID: ${{ inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID }}
-      REVIEWED_ARTIFACT_ID: ${{ inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID }}
-      REVIEWED_VSIX_SHA256: ${{ inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256 }}
-      REVIEWED_SOURCE_SHA: ${{ inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA }}
-      REVIEWED_MEDIA_ARTIFACT_ID: ${{ inputs.candidate_media_artifact_id || vars.INTENTUMDIFF_MEDIA_ARTIFACT_ID }}
-      REVIEWED_MEDIA_SHA256: ${{ inputs.candidate_media_sha256 || vars.INTENTUMDIFF_MEDIA_SHA256 }}
+      REVIEWED_RUN_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_run_id || vars.INTENTUMDIFF_VSIX_RUN_ID) || inputs.candidate_run_id }}
+      REVIEWED_ARTIFACT_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_artifact_id || vars.INTENTUMDIFF_VSIX_ARTIFACT_ID) || inputs.candidate_artifact_id }}
+      REVIEWED_VSIX_SHA256: ${{ inputs.orchestrator_run == '' && (inputs.candidate_sha256 || vars.INTENTUMDIFF_VSIX_SHA256) || inputs.candidate_sha256 }}
+      REVIEWED_SOURCE_SHA: ${{ inputs.orchestrator_run == '' && (inputs.candidate_source_sha || vars.INTENTUMDIFF_VSIX_SOURCE_SHA) || inputs.candidate_source_sha }}
+      REVIEWED_MEDIA_ARTIFACT_ID: ${{ inputs.orchestrator_run == '' && (inputs.candidate_media_artifact_id || vars.INTENTUMDIFF_MEDIA_ARTIFACT_ID) || inputs.candidate_media_artifact_id }}
+      REVIEWED_MEDIA_SHA256: ${{ inputs.orchestrator_run == '' && (inputs.candidate_media_sha256 || vars.INTENTUMDIFF_MEDIA_SHA256) || inputs.candidate_media_sha256 }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -253,9 +305,10 @@ jobs:
 
   publish:
     name: Publish to Marketplace + Open VSX
-    needs: [package, scan]
-    # Only on a tag, and never on a dispatch asking for a dry run.
-    if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+    needs: [mode, package, scan]
+    # Only on a tag, and never on a dispatch asking for a dry run: a repo release (tag push,
+    # or dispatch on the tag with dry_run=false) or an orchestrated release.
+    if: startsWith(github.ref, 'refs/tags/v') && (needs.mode.outputs.mode == 'repo' || needs.mode.outputs.mode == 'orchestrated')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
